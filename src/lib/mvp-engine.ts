@@ -1,4 +1,5 @@
 import {
+  ChecklistFeedbackResponse,
   ClarificationResponse,
   DebugDiagnosisResponse,
   GoalInterviewResponse,
@@ -426,6 +427,87 @@ export function createProjectPath(
 
 function readableChecklistItem(item: string): string {
   return item.replace(/\.$/u, "").replace(/\s+/gu, " ").trim();
+}
+
+function parseChecklistDraft(draft: string): string[] {
+  return draft
+    .split(/\n|;/u)
+    .map((line) =>
+      line
+        .replace(/^\s*(?:[-*]|\d+[.)]|□|\[ ?\])\s*/u, "")
+        .replace(/\s+/gu, " ")
+        .trim()
+    )
+    .filter(Boolean)
+    .slice(0, 6);
+}
+
+function isVagueChecklistItem(item: string): boolean {
+  const text = item.toLowerCase();
+  if (text.length < 8) return true;
+  if (/^(it works|works|looks good|it looks good|the game is fun|fun|done|finished)$/iu.test(text)) return true;
+  return !/(i can|when|click|tap|type|see|show|appear|change|tell|message|score|button|answer|screen|question|right|wrong|correct|try again)/iu.test(text);
+}
+
+function overlapScore(a: string, b: string): number {
+  const aWords = new Set(a.toLowerCase().split(/[^a-z0-9]+/u).filter((word) => word.length > 3));
+  const bWords = b.toLowerCase().split(/[^a-z0-9]+/u).filter((word) => word.length > 3);
+  return bWords.filter((word) => aWords.has(word)).length;
+}
+
+function checkableVersion(item: string): string {
+  const cleaned = readableChecklistItem(item);
+  if (/^(i can|when|the|a|an)\b/iu.test(cleaned)) return cleaned;
+  if (/click|tap/iu.test(cleaned)) return `I can ${cleaned.charAt(0).toLowerCase()}${cleaned.slice(1)}`;
+  if (/show|appear|visible|see/iu.test(cleaned)) return `I see ${cleaned.charAt(0).toLowerCase()}${cleaned.slice(1)}`;
+  return cleaned;
+}
+
+export function reviewChecklist(input: { milestone: Milestone; draftChecklist: string }): ChecklistFeedbackResponse {
+  const draftItems = parseChecklistDraft(input.draftChecklist);
+  const goodAndCheckable = draftItems
+    .filter((item) => !isVagueChecklistItem(item))
+    .map((text) => ({
+      text,
+      reason: "A friend can try it in the preview and answer yes or not yet."
+    }));
+  const tooVague = draftItems
+    .filter(isVagueChecklistItem)
+    .map((text) => ({
+      text,
+      reason: "This is a good goal, but it does not say what should happen on the screen."
+    }));
+  const covered = new Set<string>();
+  for (const item of goodAndCheckable) {
+    const best = input.milestone.doneChecklist.find((candidate) => overlapScore(item.text, candidate) > 0);
+    if (best) covered.add(best);
+  }
+  const missing = input.milestone.doneChecklist
+    .filter((item) => !covered.has(item))
+    .slice(0, Math.max(1, 4 - goodAndCheckable.length))
+    .map((text) => ({
+      text,
+      reason: "This part helps connect the step to the rest of the project."
+    }));
+
+  const improvedChecklist = [
+    ...goodAndCheckable.map((item) => checkableVersion(item.text)),
+    ...missing.map((item) => checkableVersion(item.text))
+  ]
+    .filter(Boolean)
+    .slice(0, 4);
+
+  return {
+    engineSource: "fallback",
+    goodAndCheckable,
+    tooVague,
+    missingStep: missing,
+    improvedChecklist: improvedChecklist.length > 0 ? improvedChecklist : input.milestone.doneChecklist.slice(0, 4),
+    assistantMessage:
+      tooVague.length > 0
+        ? "Some ideas are good but hard to check. I made them easier to see in the preview."
+        : "This checklist is clear enough to share. You can use it or change it."
+  };
 }
 
 function milestoneText(milestone: Milestone): string {

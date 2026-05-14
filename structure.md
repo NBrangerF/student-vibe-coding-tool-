@@ -10,22 +10,44 @@ The app is a Vite + React + TypeScript prototype for the Goal-to-Milestone workf
 Runtime shape:
 
 ```text
-student idea
+Idea Studio
   -> multi-turn goal interview
-  -> live project path map
-  -> frontend API client
-  -> local OpenAI proxy when OPENAI_API_KEY is available
-  -> Vercel serverless OpenAI routes when deployed with OPENAI_API_KEY
-  -> deterministic fallback when no key is configured
-  -> deterministic MVP engine
-  -> full stage shell UI
-  -> p5.js iframe preview
-  -> checkpoint / debug / mini-explain loop
+  -> Project Flowchart with visual system cards
+  -> choose first bounded milestone
+  -> Milestone Room
+  -> student-authored done checklist
+  -> LLM checklist feedback
+  -> shared checklist confirmation
+  -> visual logic map
+  -> guided build step
+  -> p5.js iframe live preview
+  -> student preview check-off
+  -> Preview Debug / expected-vs-observed
+  -> mini-explain
+  -> System Map update
+  -> choose next milestone
 ```
 
 The current implementation can use OpenAI through a local Node proxy. If `OPENAI_API_KEY` is missing, the frontend falls back to the deterministic MVP engine so UI work can continue without credentials.
 
-The `final wandan/` reference project exists in the workspace. Its Stage 1 idea-lab flow informed this app's guided-questioning pattern and visible planning artifact, but the UI is not copied.
+The earlier `final wandan/` reference informed the guided-questioning pattern and visible planning artifact, but it is not part of this repository.
+
+## Current Product Architecture
+
+The app is now organized as a Grade 3 project studio, not a generic SaaS dashboard:
+
+```text
+Level 1: Idea Studio + Project Flowchart
+  What do I want to make? What parts does the system need?
+
+Level 2: Milestone Room
+  What one small behavior should work next? How will I know it works?
+
+Level 3: Preview Feedback Loop
+  What did I expect? What did I observe? What should I fix or connect next?
+```
+
+Default UI copy is English and student-facing. Technical labels are translated into Grade 3 language such as "what you see", "what you just added", "small step", and "what happens next".
 
 ## Root Files
 
@@ -42,6 +64,8 @@ The `final wandan/` reference project exists in the workspace. Its Stage 1 idea-
 ├── .env.example
 ├── structure.md
 ├── api
+│   ├── checklist
+│   │   └── review.mjs
 │   ├── goal
 │   │   └── interview
 │   │       ├── answer.mjs
@@ -54,7 +78,6 @@ The `final wandan/` reference project exists in the workspace. Its Stage 1 idea-
 │   ├── load-env.mjs
 │   ├── openai-service.mjs
 │   └── vercel-handler.mjs
-├── final wandan/
 ├── student_ai_build_companion_prd.md
 └── icce2026_short_paper.pdf
 ```
@@ -105,18 +128,16 @@ The `final wandan/` reference project exists in the workspace. Its Stage 1 idea-
   Local API proxy and development orchestration. Keeps the OpenAI API key out of browser code.
 
 - `api/`  
-  Vercel serverless API entrypoints for production LLM-backed planning routes:
+  Vercel serverless API entrypoints for production LLM-backed planning and checklist feedback routes:
 
   ```text
+  POST /api/checklist/review
   POST /api/goal/interview/start
   POST /api/goal/interview/answer
   POST /api/project/path
   ```
 
   Build, patch, debug, checkpoint, and preview routes remain deterministic browser-local MVP routes through `mock-api.ts`.
-
-- `final wandan/`  
-  Local reference project. Its Stage 1 flow uses a step reducer, LLM-generated mission cards, and a final charter. The current app borrows the functional idea of guided questioning and visible planning artifacts, not the exact UI.
 
 - `student_ai_build_companion_prd.md`  
   Product requirements document. Source of product scope, UX principles, MVP requirements, data model, and risk constraints.
@@ -154,11 +175,14 @@ React entrypoint. Mounts `BuildCompanionWorkspace` into `#root` and imports glob
 
 Global visual system for the prototype:
 
-- Goal-to-Milestone stage shell layout
-- left stage navigation and top product navigation
-- Dashboard, Flowchart, Milestones, and Preview / Debug surfaces
+- Grade 3 project studio top app bar
+- mobile-only horizontal stage chips
+- Idea Studio, Project Flowchart, Milestone Room, and Preview Debug / System Map surfaces
+- Milestone Room three-zone layout: Project Map, large Preview / observation area, and Scaffold Panel
+- student-authored checklist workshop with draft rows, AI feedback, and suggested revision
+- visual logic cards for action, check, output, feedback, and state
 - compact embedded tool drawer for changes, code, console, and history
-- responsive behavior for narrower screens
+- responsive behavior that stacks project panels and turns stage navigation into horizontal chips on mobile
 
 The CSS is intentionally app-surface oriented rather than landing-page oriented.
 
@@ -166,28 +190,38 @@ The CSS is intentionally app-surface oriented rather than landing-page oriented.
 
 Main product workspace. Owns the interactive user flow:
 
-- local `activeStage` state for Dashboard, Flowchart, Milestones, and Preview / Debug
-- left sidebar and top navigation shell
+- local `activeStage` state for Idea Studio, Flowchart, Milestone Room, and Preview / Debug
+- top project studio shell with project switcher, saved state, Save / Share / More actions, and mobile stage chips
 - idea input
-- starter cards
+- visual project idea preview
+- starter shortcuts
 - multi-turn goal interview
 - synchronous project path map updates
 - project path generation
+- vertical project flowchart cards and path chooser
 - milestone selection
-- done checklist
+- Milestone Room flow
+- student-authored done checklist draft
+- LLM checklist feedback
+- shared checklist confirmation
+- main-area checklist workshop for Grade 3 criteria articulation
+- student preview check-off with Yes / Not yet / Not sure
 - logic sketch
+- center visual logic map
 - prediction question
 - small patch application
 - live preview run/restart
 - visual debugging
 - mini-explain
+- system map update cards
 - checkpoint creation and rollback
 - lightweight build journey trace
 - Grade 3 copy mode for replacing technical feedback with student-facing language such as "what you see", "what you made", and "next small step"
+- local storage hydration guard so returning project state is not overwritten by the initial empty render
 
 This component calls `postJson()` from `src/lib/api-client.ts` using endpoint-style paths such as `/api/project/path` and `/api/build/patch`.
 
-Before a project is generated, Dashboard captures the idea and Flowchart shows the live path map plus the current LLM question. After enough interview answers are collected, the user can generate the formal milestone path and move to the Milestones build workspace. Preview / Debug focuses on expected-vs-observed behavior and checklist-based diagnosis.
+Before a project is generated, Idea Studio captures the idea and Flowchart shows a gradually growing system map plus the current LLM question. After enough interview answers are collected, the user can generate the formal milestone path and move into a Milestone Room. Preview / Debug focuses on expected-vs-observed behavior, checklist-based diagnosis, and the System Map update.
 
 ### `src/components/p5-preview.tsx`
 
@@ -203,7 +237,7 @@ Responsibilities:
 
 ### `src/components/project-path-map.tsx`
 
-Canvas-like visual map for the goal-to-path stage.
+Legacy canvas-like visual map for the goal-to-path stage. The current main Flowchart screen renders a simpler Grade 3 vertical system map directly inside `build-companion-workspace.tsx`; this component remains available for future advanced map/editing modes.
 
 Responsibilities:
 
@@ -231,6 +265,8 @@ Shared domain types for the MVP:
 - `ClarificationResponse`
 - `ProjectPathResponse`
 - `MilestonePlanResponse`
+- `ChecklistFeedbackItem`
+- `ChecklistFeedbackResponse`
 - `PatchResponse`
 - `PreviewState`
 - `DebugDiagnosisResponse`
@@ -247,6 +283,7 @@ Responsibilities:
 - falls back to `mock-api.ts` if the proxy is unavailable or credentials are missing
 - keeps UI code independent of the concrete AI provider
 - routes build/patch/debug/checkpoint/preview calls directly to deterministic local logic so missing backend MVP endpoints are not treated as the normal network path
+- calls `/api/checklist/review` through the OpenAI proxy when available, then falls back to deterministic checklist feedback
 
 ### `src/lib/mvp-engine.ts`
 
@@ -259,6 +296,7 @@ Responsibilities:
 - turns fuzzy ideas into clarification questions
 - generates bounded School Quiz Game p5 project paths
 - creates milestone plans with checklist, logic sketch, and prediction question
+- reviews student-authored checklist drafts and proposes observable shared checklist items
 - generates scoped p5 patch snapshots
 - diagnoses bugs from visible behavior and failed checklist items
 
@@ -269,7 +307,9 @@ This is the best place to preserve product rules such as:
 - no path, no full project
 - no milestone, no coding
 - patch must be scoped to the selected milestone
+- done checklist should be drafted by the student, improved by AI, and confirmed before build
 - debug starts from preview behavior
+- system map cards should make action, decision, feedback, and state visible
 - mini-explain stays lightweight
 
 ### `src/lib/mock-api.ts`
@@ -281,6 +321,7 @@ Responsibilities:
 - maps endpoint-style strings to deterministic engine functions
 - simulates small network delay
 - handles `/api/goal/interview/start` and `/api/goal/interview/answer`
+- handles `/api/checklist/review`
 - creates checkpoint objects
 - restores checkpoint snapshots
 
@@ -313,6 +354,7 @@ Current coverage:
 - formal path generation waits for enough core answers
 - project path contains bounded visible milestones
 - milestone planning includes checklist, logic sketch, and prediction
+- student-authored checklist feedback improves vague items
 - generated patch remains scoped to selected milestone
 - debug diagnosis starts from visible behavior and failed checklist
 
@@ -327,6 +369,7 @@ Current routes:
 - `POST /api/goal/interview/start`
 - `POST /api/goal/interview/answer`
 - `POST /api/project/path`
+- `POST /api/checklist/review`
 
 If `OPENAI_API_KEY` is missing, it returns `503`; the frontend API client catches the failed request and uses the deterministic fallback.
 
@@ -346,6 +389,10 @@ Vercel function for `POST /api/goal/interview/answer`. Delegates to `answerGoalI
 
 Vercel function for `POST /api/project/path`. Delegates to `generateProjectPath()` in `server/openai-service.mjs`.
 
+### `api/checklist/review.mjs`
+
+Vercel function for `POST /api/checklist/review`. Delegates to `reviewChecklist()` in `server/openai-service.mjs`, which returns Good / Too vague / Missing feedback plus a clearer shared checklist.
+
 ### `server/openai-service.mjs`
 
 OpenAI Responses API integration.
@@ -357,6 +404,7 @@ Responsibilities:
 - requests structured JSON with a JSON schema
 - asks for English student-facing UI text
 - prompts the model to grow the path map gradually and avoid pre-generating future milestones
+- prompts the model to review Grade 3 checklist drafts without grading or taking over
 - normalizes model text lengths and repeated characters before returning UI-facing data
 - supports `NODE_USE_ENV_PROXY=1` with `HTTPS_PROXY` / `HTTP_PROXY` for local OpenAI network access
 
@@ -378,6 +426,7 @@ POST /api/goal/interview/start
 POST /api/goal/interview/answer
 POST /api/idea/clarify
 POST /api/project/path
+POST /api/checklist/review
 POST /api/milestone/plan
 POST /api/build/patch
 POST /api/preview/run
@@ -425,6 +474,17 @@ output/
 - `.vercel/` is local Vercel project metadata.
 
 Do not edit either by hand.
+
+Recent visual verification screenshots in `output/`:
+
+```text
+grade3-idea-studio.png
+grade3-flowchart-start.png
+grade3-milestone-desktop.png
+grade3-milestone-mobile.png
+```
+
+These are review artifacts only and should stay ignored.
 
 ## Maintenance Rules
 

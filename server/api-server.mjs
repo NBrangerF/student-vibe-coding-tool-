@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import "./load-env.mjs";
-import { answerGoalInterview, generateProjectPath, startGoalInterview } from "./openai-service.mjs";
+import { answerGoalInterview, generateProjectPath, reviewChecklist, startGoalInterview } from "./openai-service.mjs";
 
 const PORT = Number(process.env.API_PORT ?? 8787);
 
@@ -24,7 +24,8 @@ async function readJsonBody(request) {
 const handlers = {
   "/api/goal/interview/start": startGoalInterview,
   "/api/goal/interview/answer": answerGoalInterview,
-  "/api/project/path": generateProjectPath
+  "/api/project/path": generateProjectPath,
+  "/api/checklist/review": reviewChecklist
 };
 
 createServer(async (request, response) => {

@@ -1,2048 +1,2154 @@
-# PRD｜面向 K-12 学生的 AI Build Companion
+# PRD｜Goal-to-Milestone：面向三年级学生的 AI 支持创意编程与计算思维工具
 
-## 0. 产品一句话
+> 本版本为 Grade 3 scaffolding-first 重构版。它继承 short paper 的 Goal-to-Milestone 框架，但进一步明确：对于三年级学生，产品不能只提供 milestone 路线，还必须在 milestone 内提供更强的 visual cues、step scaffolds、student-authored done checklist、LLM feedback loop，以及面向 computational thinking 与 systems thinking 的可视化支持。
 
-一个面向 K-12 学生个人创作的 AI 项目实现伙伴。它不从课程、教师任务或编程知识点开始，而从学生自己的创作动机开始：学生只需要说“我想做一个……”，系统就帮助他把模糊想法转化为可执行的 milestone path，并在每个 milestone 中通过 live preview、小步 coding、视觉化 debugging 和轻量解释，帮助学生一边做出作品，一边理解它是如何运作的。
+---
 
-**核心表达：**
+## 0A. 本次重构的核心变化
 
-> From “I want to make…” to “I made it, and I know how it works.”
+### 0A.1 从“milestone 清晰”升级为“milestone 内部可学习”
+
+旧版本已经解决了：
+
+```text
+idea → project flowchart → next bounded milestone
+```
+
+但对于 Grade 3 学生，仅仅有 milestone 还不够。三年级学生通常无法自动理解：
+
+- 当前 milestone 为什么重要；
+- 它和整个系统有什么关系；
+- 哪些行为算完成；
+- 怎么把完成条件转化为代码行为；
+- preview 里的现象和 checklist / logic sketch 如何对应；
+- 自己应该检查什么，而不是等 AI 告诉答案。
+
+因此，新版本把每个 milestone 设计成一个 **scaffolded build room**，而不只是一个任务卡。
+
+### 0A.2 Done checklist 改为学生先填，LLM 再反馈
+
+旧版本中，done checklist 主要由 AI 生成。新版本调整为：
+
+```text
+Student drafts checklist → LLM gives feedback → Student revises → Shared checklist is confirmed
+```
+
+这非常关键。因为 done checklist 不只是产品管理工具，而是三年级学生练习 computational thinking 与 systems thinking 的入口。
+
+学生需要先尝试说：
+
+- “我希望它做什么？”
+- “我怎么知道它成功了？”
+- “别人看到什么才算完成？”
+
+然后 LLM 帮助学生把模糊标准改写为可观察、可测试、可实现的标准。
+
+### 0A.3 与 Scratch 的核心差异
+
+本产品不是 Scratch 的替代品，而是另一种学习重心。
+
+Scratch 的优势是：
+
+- block-based coding environment；
+- 降低语法门槛；
+- 帮助学生关注 coding fundamentals；
+- 通过拖拽积木理解事件、循环、条件、变量等基本结构。
+
+Goal-to-Milestone 的差异是：
+
+1. **Goal-driven first**：先从学生想完成的 project goal 出发，而不是从积木或代码结构出发。
+2. **Computational thinking focus**：强调分解、排序、条件、状态、反馈、测试、debugging、criteria articulation。
+3. **Systems thinking focus**：强调项目由多个相互影响的部分组成，学生要理解 input、process、output、feedback loop、state change、dependencies。
+4. **Faster feedback**：通过 AI + live preview 让学生更快看到“我想要的行为”和“系统实际行为”的差异。
+5. **Milestone-based metacognition**：每一步都要求学生判断：我现在要让系统多一个什么行为？怎样知道它发生了？如果没有发生，系统哪里断了？
+
+### 0A.4 新核心链路
+
+旧链路：
+
+```text
+Idea → Project flowchart → Next bounded milestone → Done checklist → Logic sketch → Build → Preview → Fix → Mini-explain → Next milestone
+```
+
+Grade 3 新链路：
+
+```text
+Idea
+→ Project flowchart
+→ Choose milestone
+→ Milestone story
+→ Student drafts done checklist
+→ LLM feedback on checklist
+→ Revised checklist
+→ Visual logic map
+→ Guided build steps
+→ Live preview
+→ Student checks against checklist
+→ LLM feedback on observed behavior
+→ Fix with visual cues
+→ Mini-explain
+→ System map update
+→ Choose next milestone
+```
+
+---
+
+## 0B. Grade 3 设计原则
+
+### GP1. 每个 milestone 都必须有 visual anchor
+
+三年级学生需要“看得见”的目标。每个 milestone 应该被表示为：
+
+- 一个画面变化；
+- 一个用户动作；
+- 一个系统反应；
+- 一个 before / after 对比；
+- 一个简单系统卡片。
+
+不要只写：
+
+```text
+Add feedback logic.
+```
+
+要写成：
+
+```text
+When I click an answer, the game tells me if I am right or not.
+```
+
+### GP2. Checklist 是学生表达目标的工具，不是 AI 生成的任务清单
+
+学生先写 checklist，即使写得不准确也没关系。LLM 的任务不是直接替换，而是引导学生改好。
+
+学生初稿：
+
+```text
+It works.
+It looks good.
+The game is fun.
+```
+
+LLM 反馈：
+
+```text
+These are good ideas, but they are hard to check. Let’s make them easier to see.
+What should happen when someone clicks an answer?
+```
+
+修订后：
+
+```text
+□ I can click an answer.
+□ The game says “Correct!” if the answer is right.
+□ The game says “Try again” if the answer is wrong.
+□ The message appears right away.
+```
+
+### GP3. Scaffolding 要分层，不要一次性给完
+
+三年级学生不适合看到大量功能和控制项。每个 milestone 内只显示当前需要的 scaffold：
+
+1. What are we making happen?
+2. How will we know it worked?
+3. What parts are involved?
+4. Let’s build one small step.
+5. What happened in preview?
+6. Which checklist item passed or failed?
+7. What should we try next?
+
+### GP4. Visual cues 比文字解释更重要
+
+每个核心概念都要有视觉提示：
+
+- input：学生动作，用手指 / cursor / click marker 表示；
+- process：系统内部变化，用 arrows / state cards 表示；
+- output：屏幕结果，用 preview highlight 表示；
+- feedback：系统回应，用 message bubble 表示；
+- dependency：一个部分影响另一个部分，用 connector 表示；
+- bug：expected vs observed，用并排对比表示。
+
+### GP5. Systems thinking 必须显性化
+
+项目不是一个个孤立功能，而是一个小系统。每个 milestone 完成后，系统 map 要更新：
+
+```text
+Player click → Check answer → Show feedback → Update score → Next question
+```
+
+学生逐步看到：
+
+- 哪个部分接收 input；
+- 哪个部分做 decision；
+- 哪个部分产生 output；
+- 哪个部分保存 state；
+- 哪个部分影响下一步。
+
+### GP6. UI 要减少冗余，按阶段渐进显示
+
+三年级学生界面不能同时展示太多功能。默认不展示复杂 toolbar、export、gallery、resources、advanced code view。
+
+核心界面只保留：
+
+- Project flowchart
+- Current milestone
+- Done checklist
+- Visual logic map
+- Preview
+- AI guide
+- Mentor help
+
+高级功能折叠到 “More”。
+
+---
+
+## 0C. 新 milestone room 信息架构
+
+每个 milestone 进入一个专门工作区：**Milestone Room**。
+
+### 左侧：Project Map
+
+显示整个 project flowchart，但简化成少量大卡片。
+
+例如：
+
+```text
+1 Start screen ✓
+2 First question ✓
+3 Answer feedback ← current
+4 Score
+5 More questions
+```
+
+视觉 cue：
+
+- 已完成：绿色勾
+- 当前：高亮边框
+- 后续：灰色
+- blocked：黄色提示
+
+### 中间：Build + Preview
+
+中间是最大区域，分上下：
+
+1. 上方：Current milestone story
+2. 下方：Live preview
+
+Milestone story 示例：
+
+```text
+You are making the game respond when someone clicks an answer.
+Before: clicking an answer does nothing.
+After: clicking an answer shows Correct or Try again.
+```
+
+Preview 必须突出 before / after 和可交互测试。
+
+### 右侧：Scaffold Panel
+
+右侧不是普通聊天框，而是分步 scaffold：
+
+1. My checklist
+2. AI feedback
+3. Visual logic map
+4. Build step
+5. Check preview
+6. Mini-explain
+
+每次只展开当前步骤，其他步骤折叠。
+
+---
+
+## 0D. 新 checklist 流程
+
+### Step 1：学生先写
+
+UI 文案：
+
+```text
+What should happen when this milestone is done?
+Write 2–4 things you can see or test.
+```
+
+为三年级学生提供 sentence starters：
+
+```text
+□ I can...
+□ When I click..., the app...
+□ I see...
+□ The game tells me...
+□ The score...
+```
+
+### Step 2：LLM 反馈
+
+LLM 不直接覆盖学生答案，而是给三类反馈：
+
+1. **Good and checkable**
+2. **Too vague**
+3. **Missing step**
+
+示例：
+
+```text
+Good: “I can click an answer.” We can test this.
+Too vague: “It is fun.” Let’s make this more visible.
+Missing: Should the game say something after the click?
+```
+
+### Step 3：学生修订
+
+系统给出 revised checklist draft，但必须让学生确认或修改：
+
+```text
+Here is a clearer checklist. Want to use it or change it?
+```
+
+### Step 4：Checklist 变成测试面板
+
+Build 后，学生用 checklist 手动检查：
+
+```text
+□ Did this happen? Yes / Not yet / I’m not sure
+```
+
+LLM 只在学生勾选后给反馈。
+
+---
+
+## 0E. 新 scaffolding layer
+
+### 1. Goal scaffold
+
+帮助学生把 vague goal 变成 visible behavior。
+
+```text
+I want to make a quiz game.
+→ What should the player do first?
+→ What should the game show next?
+```
+
+### 2. Flowchart scaffold
+
+帮助学生看到系统顺序。
+
+```text
+Start → Question → Answer → Feedback → Score
+```
+
+### 3. Milestone scaffold
+
+帮助学生选择一个小步骤。
+
+```text
+Let’s not build the whole quiz now.
+Which one small thing should work next?
+```
+
+### 4. Checklist scaffold
+
+帮助学生定义成功。
+
+```text
+How will we know this step works?
+```
+
+### 5. Logic scaffold
+
+帮助学生理解 input-process-output。
+
+```text
+Click answer → Check if right → Show message
+```
+
+### 6. Preview scaffold
+
+帮助学生观察系统行为。
+
+```text
+Try clicking answer A. What happened?
+```
+
+### 7. Debug scaffold
+
+帮助学生比较 expected vs observed。
+
+```text
+You expected feedback. You saw no message. Which part is missing?
+```
+
+### 8. Systems scaffold
+
+帮助学生看到这个 milestone 如何改变整体系统。
+
+```text
+Now your system has a feedback loop:
+Player answer → Game response → Player tries next question
+```
+
+---
+
+## 0F. Visual cue system
+
+### 0F.1 核心颜色
+
+- Goal / idea：soft teal
+- Flowchart / system：soft blue
+- Current milestone：warm yellow
+- Checklist：soft green
+- Logic / CT：lavender
+- Preview / observed behavior：neutral white + blue highlight
+- Bug / mismatch：soft red / coral
+- Mentor help：light gray-blue
+
+### 0F.2 核心图形语言
+
+| 概念 | Visual cue |
+|---|---|
+| Goal | star / target card |
+| User action | cursor / tap marker |
+| Input | incoming arrow |
+| Process | gear / transformation card |
+| Decision | diamond / split card |
+| Output | screen highlight |
+| Feedback | speech bubble |
+| State | small memory box |
+| Bug | expected vs observed split |
+| System connection | line connector |
+
+### 0F.3 三年级适配
+
+图标可用，但不能幼稚卡通化。风格应为：
+
+- clean
+- rounded
+- soft
+- readable
+- low-noise
+- not toy-like
+
+---
+
+## 0G. 功能冗余删减
+
+### 从默认界面移除或折叠
+
+- Gallery
+- Resources
+- Export
+- Advanced code editor
+- Full toolbar with many operations
+- AI Assistant global chat
+- 多个 starter cards
+- 大量 project metrics
+- 复杂 account/profile widgets
+
+### 默认保留
+
+- My project
+- Flowchart
+- Current milestone
+- Checklist
+- Logic map
+- Preview
+- Ask AI
+- Ask mentor
+- Next step
+
+### 高级功能进入 More
+
+- Rename project
+- Export
+- Share
+- Code view
+- Version history
+- Advanced settings
+
+---
+
+## 0H. 新 MVP 优先级
+
+### P0：必须做
+
+1. Idea-first entry
+2. Project flowchart with visual cards
+3. Milestone room
+4. Student-authored done checklist
+5. LLM checklist feedback
+6. Visual logic map
+7. Guided build step
+8. Live preview
+9. Student checklist check-off after preview
+10. LLM feedback on observed behavior
+11. Simple fix suggestion
+12. Mini-explain
+13. System map update
+14. Choose next milestone
+
+### P1：重要但可后置
+
+1. Mentor support at impasses
+2. Version history
+3. Before / after preview comparison
+4. Code view toggle
+5. More project templates
+6. Share link
+
+### P2：暂缓
+
+1. Gallery
+2. Full community
+3. Teacher dashboard
+4. Parent analytics
+5. Multi-user classroom mode
+6. Full Scratch-like editor
+7. Full code editor
+8. AI grading
+
+---
+
+## 0I. 新评价指标
+
+### Computational thinking indicators
+
+- Student can name a visible behavior.
+- Student can break goal into ordered steps.
+- Student can create or revise checklist items.
+- Student can identify input → process → output.
+- Student can compare expected vs observed behavior.
+- Student can locate which checklist item failed.
+- Student can explain one small system change.
+
+### Systems thinking indicators
+
+- Student can identify parts of the project system.
+- Student can explain how one part affects another.
+- Student can see feedback loop.
+- Student can revise flowchart after preview.
+- Student can predict how adding a milestone changes the whole project.
+
+### Motivation / ownership indicators
+
+- Student revises AI suggestion.
+- Student names project parts in own words.
+- Student continues after mismatch.
+- Student chooses next milestone voluntarily.
+- Student asks “what if” questions.
+
+---
+
+## 0J. 新产品核心结论
+
+Grade 3 版本的 Goal-to-Milestone 不应该只是一个简化版 vibe coding tool。
+
+它应该是：
+
+> 一个 goal-driven、visual-scaffolded、student-authored criteria-based creative programming environment。
+
+它与 Scratch 的最大不同不是“更会写代码”，而是：
+
+> Scratch 帮学生更容易进入 coding fundamentals；Goal-to-Milestone 帮学生从自己的目标出发，练习把一个系统想清楚、拆清楚、做出来、看反馈、改进，并理解各部分如何相互作用。
+
+---
+
+# PRD｜Goal-to-Milestone：面向 K–12 创意编程的 AI 项目推进工具
+
+## 0. 版本说明
+
+本 PRD 是基于 short paper **“Beyond Vibe Coding: A Goal-to-Milestone Framework for AI-Supported Creative Programming in K–12”** 重新整理后的产品需求文档。
+
+如果本 PRD 与早期版本存在冲突，以 short paper 中的理论定位、术语和框架为准。
+
+主要调整包括：
+
+1. 将早期的 **Project Path** 调整为 **Project Flowchart**。
+2. 将“AI Build Companion”进一步理论化为 **metacognitive progression architecture**。
+3. 将目标用户从泛 K–12 收窄为 **upper-elementary and middle-school learners**，同时保留 broader K–12 implications。
+4. 将使用场景明确为 **hybrid learning spaces**：课后项目、家庭、club、library、maker space、online community，以及部分由课堂任务触发但不完全由教师控制的项目。
+5. 将 adult monitor 改为 **mentor / facilitator support**，强调其作用是 planning impasses 时的支持，而不是接管任务。
+6. 将核心循环重构为：
+
+```text
+Idea-first entry
+→ Project flowchart
+→ Next bounded milestone
+→ Done checklist
+→ Logic sketch
+→ Build with AI support
+→ Preview and test
+→ Fix observed behavior
+→ Mini-explain
+→ Choose next milestone
+→ Next bounded milestone
+```
+
+---
+
+# 1. 产品一句话
+
+**Goal-to-Milestone** 是一个面向 upper-elementary and middle-school learners 的 AI-supported creative programming 工具。它不把 AI 编程支持理解为“从 prompt 直接生成完整代码”，而是帮助学习者从一个 personally meaningful idea 出发，与 AI 共同构建可修改的 project flowchart，选择下一个 bounded milestone，明确 done criteria，绘制 logic sketch，小步 build，基于 live preview 观察和修复行为差异，并通过 mini-explain 连接到下一个 milestone。
+
+它的核心目标是：
+
+> 帮助学习者保持对项目的 ownership，同时把 AI 帮助引导为 guidance，而不是 wholesale delegation。
 
 中文表达：
 
-> 从“我想做一个……”到“我做出来了，而且我知道它怎么动起来的。”
+> 不是让 AI 替学生完成项目，而是帮助学生持续判断：我下一步想让作品发生什么？怎样知道它完成了？为什么它现在这样运行？
 
 ---
 
-## 1. 产品定位
+# 2. 产品定位
 
-### 1.1 产品不是
+## 2.1 产品不是
 
-本产品不是一个强课堂绑定的 AI 编程助教。
+本产品不是：
 
-它不是：
+- 直接生成完整应用的儿童版 vibe coding 工具
+- 成人版 Cursor / Claude Code / Codex 的低龄化界面
+- 以教师任务、课程单元或课堂管理为中心的编程平台
+- 以年级、课时、知识点为入口的课程系统
+- 通过重测验、重反思、重 rubric 来证明学习的教学平台
+- 让 mentor / facilitator 实时监控并接管学生项目的系统
+- 一个单纯的代码生成器或 API wrapper
 
-- 教师布置任务后，学生按课程步骤完成的课堂平台
-- 以年级、课时、教学目标为入口的课程管理系统
-- 一个让学生选择“我要学变量/循环/函数”的学习系统
-- 一个直接替学生完成整个项目的 AI app builder
-- 一个成人版 Cursor / Claude Code / Codex 的儿童皮肤版
-- 一个“低价 API 中转站”
+## 2.2 产品是
 
-### 1.2 产品是
+本产品是：
 
-本产品是一个 **learning-supported vibe coding companion**。
+- 一个 **student-facing AI-supported creative programming environment**
+- 一个 **project progression tool**
+- 一个 **pre-code and between-milestone interaction layer**
+- 一个帮助学生从 idea 到 project flowchart，再到 bounded milestones 的 AI 支持系统
+- 一个把 planning、monitoring、debugging、mini-explanation 嵌入制作过程的 metacognitive scaffold
 
-它面向学生自发创作场景：
+产品重点不是“AI 能写什么代码”，而是：
 
-- 学生突然想做一个小游戏
-- 学生想做一个网页
-- 学生想做一个动画
-- 学生想做一个互动故事
-- 学生想做一个学习工具
-- 学生想模仿某个他喜欢的数字作品
-- 学生只有一个模糊想法，但不知道从哪里开始
-
-产品的职责不是先判断“这个项目适不适合你”，而是帮助学生回答：
-
-1. 这个想法可以变成什么样的项目？
-2. 最小可运行版本是什么？
-3. 可以拆成哪些清晰的小 milestone？
-4. 每个 milestone 怎么判断完成？
-5. 当前 milestone 的逻辑是什么？
-6. 怎么通过代码做出第一个可见结果？
-7. 运行后哪里不对？如何从现象定位 bug？
-8. 当前完成后，下一步自然做什么？
-
-### 1.3 核心原则
-
-> 学习性要嵌入创作过程，而不是压在创作过程之上。
-
-也就是说，产品不是把学生的创作冲动转化成“上课”，而是在学生制作过程中，轻轻加入计划、判断、解释、调试和迁移。
+> 什么样的支持能帮助学习者计划、监控、理解并完成下一个 meaningful step？
 
 ---
 
-## 2. 背景与问题
+# 3. 目标用户与使用场景
 
-### 2.1 现有成人 vibe coding 工具的问题
+## 3.1 核心学习者
 
-成人 vibe coding 工具通常追求：
+主要面向：
+
+- Upper-elementary learners
+- Middle-school learners
+- 对游戏、网页、互动故事、mini-app、simulation、club tools 等数字作品有创作兴趣的学生
+- 有一定数字工具使用经验，但无法独立规划完整项目的 novice creative programmers
+- 需要 AI 支持，但仍应保留项目 ownership 的学习者
+
+## 3.2 更广泛 K–12 含义
+
+虽然核心设计聚焦 upper-elementary and middle-school learners，但该框架可为更广泛 K–12 场景提供启发：
+
+- younger learners 可能需要更多 visual / block-based scaffolds
+- older learners 可能需要更复杂的 project flowchart、state/data/API planning
+- 不同年龄段的差异主要体现在 representation、语言复杂度、工具权限和 mentor involvement 的程度
+
+## 3.3 Hybrid learning spaces
+
+产品不是传统意义上的课堂工具，而是课堂工具的延伸。
+
+它适用于：
+
+- after-school programs
+- coding clubs
+- libraries
+- homes
+- maker spaces
+- online communities
+- self-directed projects
+- partly teacher-framed but student-shaped classroom projects
+
+在这些 hybrid spaces 中，教师、家长、mentor 或 facilitator 不一定持续介入，但可以在关键 planning impasses 时接入。
+
+## 3.4 Mentor / facilitator 的角色
+
+Mentor / facilitator 不是监控者、评分者或任务接管者。
+
+其核心角色是：
+
+- 当学习者无法判断 project path 时，帮助比较可能路径
+- 当学习者无法选择合适 first milestone 时，帮助缩小范围
+- 当学习者的 flowchart 变得过大或混乱时，帮助重构
+- 当 preview behavior 与 done checklist 不一致时，帮助学习者解释差异
+- 当 AI 给出过度完整的方案时，帮助学生回到 criteria 和 visible behavior
+
+原则：
+
+> Mentor support should be designed around metacognitive need rather than constant control.
+
+---
+
+# 4. 核心设计问题
+
+AI coding tools 已经可以生成代码、解释错误、帮助 novice 从 idea 到 working artifact。但在 K–12 creative programming 中，核心问题不是 AI 是否能生成可运行代码，而是：
+
+> AI 如何帮助学习者把 personally meaningful idea 转化为一个仍然 understandable、revisable、learner-owned 的 project path？
+
+因此，本产品围绕以下 design tensions 设计：
+
+## 4.1 Motivation vs. Structure
+
+学生的创作动机来自“我想做一个真实作品”。但没有结构，项目会过大、过乱、过早依赖 AI。
+
+产品需要：
+
+- 保护 idea-first motivation
+- 但通过 project flowchart 和 bounded milestone 降低 cognitive load
+
+## 4.2 Guidance vs. Delegation
+
+AI 可以帮助学习者，但也可能成为 hidden planner 和 hidden implementer。
+
+产品需要：
+
+- 让 AI support close to learner-owned progression
+- 让学生持续做 path、criteria、milestone、preview interpretation 的判断
+
+## 4.3 Visible Progress vs. Conceptual Understanding
+
+学生需要看到作品动起来，但不能只看到结果。
+
+产品需要：
+
+- 用 preview 维持 visible progress
+- 用 done checklist、logic sketch、mini-explain 产生轻量 understanding
+
+## 4.4 Informal Making vs. School-like Reflection
+
+创意编程不能变成不断写反思和完成 rubric。
+
+产品需要：
+
+- 让 reflection 嵌入制作动作中
+- 避免 checklist-as-rubric 和 checklist fatigue
+
+---
+
+# 5. 核心产品链路
+
+## 5.1 Goal-to-Milestone 主流程
 
 ```text
-prompt → code → run → fix → ship
+Idea-first entry
+→ Project flowchart
+→ Next bounded milestone
+→ Done checklist
+→ Logic sketch
+→ Build with AI support
+→ Preview and test
+→ Fix observed behavior
+→ Mini-explain
+→ Choose next milestone
+→ Next bounded milestone
 ```
 
-它们的目标是快速完成项目，适合已有判断力的开发者或成人用户。
+## 5.2 阶段解释
 
-但对于 K-12 学生，直接使用这类工具会出现几个问题：
-
-1. 学生容易跳过问题拆解，直接要求 AI 完成整个项目。
-2. 学生可能看到作品能跑，但不知道项目是如何实现的。
-3. 代码生成过程是黑箱，学生难以建立 computational thinking。
-4. debug 阶段容易变成“AI 自动修好”，学生看不到问题如何被定位。
-5. 项目越做越复杂后，学生失去控制权，变成“AI 在做我的项目”。
-6. 学生的 motivation 可能被繁重解释、表单和学习任务打断。
-
-### 2.2 现有 K-12 编程学习工具的问题
-
-传统 K-12 编程学习工具往往有较强的课程结构：
-
-```text
-lesson → concept → exercise → project
-```
-
-这适合课堂教学，但不一定适合学生自发创作。
-
-学生真实的创作动机常常是：
-
-```text
-我想做一个……
-```
-
-而不是：
-
-```text
-我想学习变量、条件判断和事件监听。
-```
-
-因此，如果产品入口一开始就要求学生选择年级、学习目标、项目类型、课时、知识点，可能会过早消耗学生的创作冲动。
-
-### 2.3 产品机会
-
-我们要做的是介于两者之间的新形态：
-
-| 类型 | 核心目标 | 问题 |
+| 阶段 | 学生端表达 | 系统实际作用 |
 |---|---|---|
-| 成人 vibe coding 工具 | 快速做出作品 | 学习脚手架弱 |
-| 课堂编程学习平台 | 按课程学习概念 | 对自发创作支持弱 |
-| 本产品 | 从学生想法出发，一边做一边理解 | 需要平衡 motivation 与 learning |
-
-产品机会在于：
-
-> 把 vibe coding 从“自然语言直接生成代码”改造成“学生创作动机驱动的项目实现路径”。
-
----
-
-## 3. 目标用户
-
-### 3.1 核心用户
-
-K-12 学生，尤其是：
-
-- 有创作冲动但不知道如何开始的学生
-- 对游戏、网页、动画、互动故事、工具类项目感兴趣的学生
-- 已经接触过 Scratch、Python、p5.js、HTML/CSS/JavaScript 或类似工具，但还不能独立规划项目的学生
-- 没有强编程基础，但愿意通过做项目学习的学生
-- 不一定在课堂中使用，而是在课后、周末、兴趣活动、自主学习中使用
-
-### 3.2 次级用户
-
-虽然产品不强绑定课堂和教师，但未来仍可能服务：
-
-- 家长：希望孩子做有创造性的技术项目
-- 课外编程机构：作为项目制创作工具
-- 学校教师：可选使用，不作为核心入口
-- 青少年创客空间：支持学生自由项目
-
-### 3.3 用户心态
-
-学生使用产品时，最重要的心理状态通常不是“我要学习编程”，而是：
-
-- 我想把脑子里的东西做出来
-- 我想做一个可以玩的东西
-- 我想模仿一个我喜欢的游戏/网站/动画
-- 我想让别人看到我的作品
-- 我想马上看到它动起来
-- 我不知道第一步怎么做
-
-因此，产品必须保护 motivation window。
+| Idea-first entry | 我想做一个…… | 捕捉 personally meaningful idea |
+| Project flowchart | 我们可以这样一步步做 | 共同反推 project path，形成可修改地图 |
+| Next bounded milestone | 下一步先让什么发生？ | 选择一个小、可见、可检查的 milestone |
+| Done checklist | 做到这些就算完成 | 明确 observable criteria，不做评分表 |
+| Logic sketch | 这个功能大概怎么工作？ | 用 pseudo-code / cards / state diagram / natural-language sequence 表达计算计划 |
+| Build with AI support | 现在小步实现它 | AI 在 milestone 范围内生成或修改代码 |
+| Preview and test | 运行看看发生了什么 | 观察 expected vs. observed behavior |
+| Fix observed behavior | 哪个行为不符合预期？ | 从现象出发 debug，而不是直接替换代码 |
+| Mini-explain | 刚刚为什么这样运行？ | 把 visible behavior 与 transferable idea 连接 |
+| Choose next milestone | 下一步想做什么？ | 回到 flowchart，选择或调整下一个 milestone |
 
 ---
 
-## 4. 核心用户痛点
+# 6. 核心功能模块
 
-### 4.1 想法模糊
+## Module A：Idea-first Entry
 
-学生常常只有一个模糊起点：
+### 目标
 
-- 我想做一个跑酷游戏
-- 我想做一个宠物养成游戏
-- 我想做一个 AI 聊天角色
-- 我想做一个海洋生态系统动画
-- 我想做一个帮我背单词的小游戏
-
-但他们不知道：
-
-- 这个项目要分几步做
-- 第一版应该做多小
-- 哪些功能先做，哪些功能后做
-- 每一步需要什么代码逻辑
-- 怎样判断这一步完成了
-
-### 4.2 直接 coding 容易失控
-
-如果系统直接生成完整代码，学生会遇到：
-
-- 代码太长，看不懂
-- 出现 bug 不知道哪里错
-- 修改一个地方影响其他地方
-- 项目越来越不像自己想的
-- AI 加了很多自己没有要求的功能
-- 学生变成“看 AI 操作”，而不是“自己制作”
-
-### 4.3 学习活动太重会破坏动机
-
-如果每一步都要求学生写大量解释、反思、概念总结，会导致：
-
-- 学生觉得像在做作业
-- 制作节奏被打断
-- 原本的创作兴奋消失
-- 学生为了完成解释而不是为了理解而回答
-
-因此，解释与反思必须轻量，且服务于当前制作。
-
-### 4.4 bug 不直观
-
-对于 K-12 学生来说，bug 最容易被理解的方式不是：
-
-```text
-TypeError: Cannot read properties of undefined
-```
-
-而是：
-
-- 按钮点了没反应
-- 角色跳起来不落下
-- 分数变成 NaN
-- 障碍物不出现
-- 页面乱掉了
-- 游戏一开始就结束
-
-因此，live preview / deployment 不是附属功能，而是 debugging 和学习的核心界面。
-
----
-
-## 5. 设计目标
-
-### 5.1 产品目标
-
-1. 帮助学生从模糊 idea 生成清晰 project path。
-2. 把项目拆成边界清楚、可运行、可预览的小 milestone。
-3. 每个 milestone 都有轻量 done checklist。
-4. 在 coding 前提供简短 logic sketch。
-5. 通过 feature coding cycle 支持小步制作。
-6. 通过 live preview 让学生直接看到结果和 bug。
-7. 通过视觉化 debugging 从现象定位问题。
-8. 通过 mini-explain 帮助学生知道“刚刚做了什么”。
-9. 通过 next milestone question 保持创作动能。
-
-### 5.2 学习目标
-
-产品不要求学生显性选择学习目标，但系统内部应能识别并记录学生正在接触的知识与技能，例如：
-
-- event
-- variable
-- condition
-- loop
-- function
-- state
-- coordinate
-- animation
-- user input
-- collision
-- data storage
-- UI layout
-- feedback logic
-- debugging strategy
-
-这些知识点不作为入口表单，而是作为系统内部的 scaffolding 和后续推荐依据。
-
-### 5.3 体验目标
-
-学生应该感觉：
-
-- AI 在帮我把想法做出来
-- 这个项目还是我的
-- 我知道下一步该做什么
-- 每一步都有可见结果
-- bug 是可以被看见和修复的
-- 我不用先学一大堆概念，也能开始
-- 但我做完以后，确实比之前更懂一点
-
----
-
-## 6. 总体产品链路
-
-原始理论链路：
-
-```text
-goal → plan → criteria → logic → code → test → explain → reflect → transfer
-```
-
-产品化后的学生体验链路：
-
-```text
-idea → path → milestone → done checklist → logic sketch → build → preview/test → fix → mini-explain → next milestone
-```
-
-### 6.1 阶段说明
-
-| 阶段 | 学生看到的表达 | 系统实际做的事 |
-|---|---|---|
-| idea | 我想做一个…… | 捕捉学生动机与项目方向 |
-| path | 我们可以这样一步步做 | 生成项目路线图 |
-| milestone | 先完成这个小目标 | 拆分小而清晰的开发阶段 |
-| done checklist | 做到这些就算完成 | 建立当前 milestone 的完成标准 |
-| logic sketch | 这个功能大概这样工作 | 用轻量方式解释运行逻辑 |
-| build | 我们来做这个功能 | 小步生成或修改代码 |
-| preview/test | 运行看看 | 在 live preview 中观察结果 |
-| fix | 看哪里不对 | 从现象出发 debug |
-| mini-explain | 刚刚我们让它多了什么能力？ | 轻量检查理解 |
-| next milestone | 下一步做什么？ | 连接下一阶段，保持 momentum |
-
----
-
-## 7. 核心功能模块
-
-## 7.1 Module A：Idea Input / 极简入口
-
-### 功能目标
-
-让学生直接表达自己的创作想法，不要求先填写年级、项目类型、学习目标或课时。
-
-### 入口文案
-
-主输入框：
-
-```text
-What do you want to make?
-你想做什么？
-```
-
-辅助入口：
-
-```text
-我已经有想法了
-我有一点想法，但说不清
-我想看看别人做了什么
-```
-
-### 设计原则
-
-- 不要求选择年级
-- 不要求选择项目类型
-- 不要求选择学习目标
-- 不要求选择课时
-- 不要求一开始说清楚所有需求
-- 允许非常模糊的输入
-- 允许学生用自然语言、关键词、草图描述项目
+允许学习者从 phrase、sketch、story、theme、desired behavior 或 vague goal 开始，而不是从固定 assignment template 开始。
 
 ### 输入示例
 
-```text
-我想做一个恐龙逃跑游戏
-```
-
-```text
-我想做一个能帮我背单词的小游戏
-```
-
-```text
-我想做一个会动的海洋生态系统
-```
-
-```text
-我想做一个班级投票网站
-```
-
-```text
-我想做一个像宝可梦一样的小游戏
-```
+- I want to make a quiz game about my school.
+- I want to make an app for our club volunteer tasks.
+- I want to make a pet game.
+- I want to make a mini website for my story world.
+- I want to make a game where a dinosaur jumps over things.
 
 ### 系统行为
 
-系统不直接生成完整项目，而是进入轻量澄清。
+AI 不立即生成完整代码，而是 reflect and clarify：
+
+- What kind of artifact does the learner imagine?
+- Who might use it?
+- What should someone be able to see?
+- What should someone be able to do?
+- What should someone choose, change, or share?
+
+### 设计要求
+
+- 问题数量少，优先使用 2–4 个选项 + free input
+- 不要求一开始选择年级、知识点或课时
+- 不把学生 idea 过早标准化为模板项目
+- 不评价项目是否“适合”学生，而是帮助其缩小为 workable version
 
 ---
 
-## 7.2 Module B：Light Clarification / 轻量澄清
+## Module B：Project Flowchart Construction
 
-### 功能目标
+### 目标
 
-通过 2–3 个问题快速把学生的模糊 idea 变成可规划项目。
+将 fuzzy idea 转化为一个 visible、revisable、learner-owned project flowchart。
 
-### 设计原则
+这是整个产品最关键的模块。
 
-- 问题数量少
-- 优先使用选项
-- 允许自由输入
-- 问题必须服务于下一步规划
-- 不问过于抽象或课程化的问题
+### 核心行为
 
-### 示例
+学习者和 AI 共同从 imagined finished artifact 反推：
 
-学生输入：
+- screens
+- states
+- data
+- interactions
+- feedback
+- ordering
+- visible behaviors
+- possible paths
 
-```text
-我想做一个恐龙逃跑游戏
-```
+### 输出形式
 
-系统回应：
+不是完整 specification，而是 lightweight project flowchart。
 
-```text
-太好了。我们可以先把它做成一个能玩的最小版本。
-
-我理解你的想法是：
-玩家控制一只恐龙，躲开障碍物，跑得越久分数越高。
-
-你想让它更像哪一种？
-
-A. 像 Chrome 小恐龙：按空格跳跃
-B. 像跑酷游戏：左右移动躲障碍
-C. 像剧情游戏：选择路线逃跑
-D. 我想自己说
-```
-
-### 可选问题类型
-
-1. 作品类型问题
+每个 flowchart node 代表一个可能的 project step，例如：
 
 ```text
-这个项目更像：
-A. 游戏
-B. 动画
-C. 网页
-D. 工具
-E. 我不确定
+Start screen
+→ One playable question
+→ Answer feedback
+→ Score
+→ More questions
+→ Styling
 ```
 
-2. 交互方式问题
+或：
 
 ```text
-用户主要怎么操作？
-A. 点击
-B. 拖动
-C. 按键盘
-D. 输入文字
-E. 选择选项
+Display volunteer tasks
+→ Add new task
+→ Mark task as done
+→ Filter by date
+→ Share app
 ```
 
-3. 最小版本问题
+### 学习者可操作行为
+
+学习者可以：
+
+- select path
+- combine path items
+- rename nodes
+- reorder nodes
+- skip nodes
+- replace nodes
+- add free input
+- ask why a path is suggested
+
+### AI 支持原则
+
+AI 应给出 **two to four possible paths**， phrased as choices rather than assignments。
+
+示例：
 
 ```text
-如果先做一个最小版本，你最想先看到什么？
-A. 一个角色动起来
-B. 一个按钮能用
-C. 一个页面出现
-D. 一个问题能被回答
-E. 一个简单游戏规则能跑
+你可以先走这几条路线：
+A. 先做一个能玩的最小版本
+B. 先做漂亮的 start screen
+C. 先做核心互动，比如答题和反馈
+D. 我想自己安排顺序
 ```
 
-### 输出
+### 与早期 PRD 的差异
 
-生成 Project Path。
+早期版本使用 “Project Path”。新版本使用 **Project Flowchart**，因为 short paper 中强调学生与 AI 共同 reverse-plan 一个可见、可修改、可重新排序的路径，而不是 AI 生成一个固定路线。
 
 ---
 
-## 7.3 Module C：Project Path Generator / 项目路线生成
+## Module C：Next Bounded Milestone Planner
 
-### 功能目标
+### 目标
 
-将学生的 idea 转化为一个可执行的 milestone path。
+将 project flowchart 中的一个 node 转化为 accessible first / next step。
 
-### 核心要求
+### Milestone 质量标准
 
-每个 milestone 必须：
+一个好的 bounded milestone 应该：
 
-1. 边界清晰
-2. 不过大
-3. 有可见结果
-4. 能在 live preview 中验证
-5. 只引入少量新概念
-6. 自然连接下一个 milestone
+1. easy to start
+2. visibly connected to the desired project
+3. framed as inspectable behavior
+4. small enough to build and preview
+5. tied to learner-selected criteria before code generation
+6. open to revision after preview
 
-### Project Path 示例
-
-学生项目：恐龙逃跑游戏
+### 不推荐表述
 
 ```text
-Project Path：恐龙逃跑游戏
-
-最终效果：
-一只恐龙在地面上奔跑，玩家按空格跳过障碍物，碰到障碍物会失败，跑得越久分数越高。
-
-Milestone 1：画出恐龙和地面
-你会做出：屏幕上出现一只恐龙，站在地面上。
-你会用到：画面、位置、角色。
-
-Milestone 2：让恐龙按空格跳起来
-你会做出：按空格时，恐龙跳起再落下。
-你会用到：键盘事件、速度、重力。
-
-Milestone 3：让障碍物从右边出现
-你会做出：仙人掌从右往左移动。
-你会用到：循环、位置变化。
-
-Milestone 4：判断碰撞
-你会做出：恐龙碰到仙人掌时游戏失败。
-你会用到：条件判断、碰撞检测。
-
-Milestone 5：加分数和重新开始
-你会做出：分数增加，失败后可以重玩。
-你会用到：变量、游戏状态。
+Write the quiz logic.
 ```
 
-### Project Path UI
-
-建议用路线图或卡片流呈现：
+### 推荐表述
 
 ```text
-[1 画出角色] → [2 让角色跳跃] → [3 加障碍物] → [4 碰撞失败] → [5 分数重玩]
+When I press Start, the first question appears.
 ```
 
-每个 milestone card 包含：
+### Milestone 生成规则
 
-- milestone 名称
-- 可见结果
-- 预计要做的东西
-- 可能用到的概念
-- 当前状态：未开始 / 正在做 / 已完成 / 需要修复
+一个 flowchart node 只有在学习者帮助命名 visible behavior 后，才成为 candidate milestone。
 
-### 学生操作
+也就是说，不是 AI 说：“下一步是写 quiz logic。”
 
-学生可以：
+而是系统引导：
 
-- 接受路径
-- 调整 milestone 顺序
-- 删除某个 milestone
-- 添加自己想要的 milestone
-- 把某个 milestone 拆小
-- 让 AI 解释为什么建议这样分
-
-### 关键限制
-
-系统不能一口气生成完整项目代码。
-
-系统应默认从 Milestone 1 开始，除非学生明确选择其他 milestone。
+```text
+你想让玩家在这一步看见什么变化？
+A. Start button 出现
+B. 按下 Start 后出现第一题
+C. 第一题出现四个选项
+D. 我想自己写
+```
 
 ---
 
-## 7.4 Module D：Milestone Done Checklist / 完成条件
+## Module D：Done Checklist
 
-### 功能目标
+### 目标
 
-为每个 milestone 生成清晰、轻量、可观察的完成条件。
+在 build 前明确 observable criteria，使 AI support 不会脱离 learner-selected criteria。
 
-不要叫 rubric，不要叫 assessment criteria。学生端叫：
+### 定义
 
-```text
-Done when...
-完成条件
-```
+Done checklist 是 shared reference points，不是 grades。
 
-### 示例
+它服务于：
 
-Milestone 2：让恐龙按空格跳起来
+- learner
+- AI assistant
+- mentor / facilitator
 
-```text
-完成条件：
-□ 按空格时，恐龙会向上移动
-□ 恐龙不会一直飞走，会落回地面
-□ 恐龙落地后，可以再次跳
-□ 不按空格时，恐龙保持在地面上
-```
+### 示例：Quiz Game First Milestone
+
+Milestone：When I press Start, the first question appears.
+
+Done checklist：
+
+- Start button appears.
+- Pressing Start shows one question.
+- The question has four answer choices.
+- The screen does not show the answer yet.
 
 ### 设计原则
 
 - 每个 checklist 3–5 条
-- 每条都能在 preview 中观察
-- 避免抽象描述
-- 不要像评分表
-- 不要一开始加入过多知识术语
-- 允许学生调整偏好
+- 必须是 observable behavior
+- 避免评分语言
+- 不使用“优秀/良好/及格”
+- 不把 checklist 变成 rubric
+- 不要频繁弹出 checklist，避免 checklist fatigue
 
-### 学生参与
+### Boundary condition
 
-系统可以问一个轻量定制问题：
-
-```text
-你想让恐龙跳得：
-A. 低一点，比较真实
-B. 高一点，比较夸张
-C. 我想自己输入高度
-```
-
-这个过程实际上是在 co-construct criteria，但学生感觉是在定制作品。
+如果 checklist 太长、太正式或过于像课堂评价，会削弱 informal creative programming 的动机。
 
 ---
 
-## 7.5 Module E：Logic Sketch / 轻量逻辑草图
+## Module E：Logic Sketch
 
-### 功能目标
+### 目标
 
-在 coding 前，用短句和简单图示帮助学生理解当前功能如何工作。
+让 computational plan 在 build 前可见。
+
+### 表达形式
+
+Logic sketch 可以是：
+
+- pseudo-code
+- cards
+- state diagram
+- natural-language sequence
+- event-flow diagram
+- input-output map
+
+### 示例
+
+Milestone：Pressing Start shows first question.
+
+Logic sketch：
+
+```text
+Player clicks Start
+→ game state changes from "start" to "question"
+→ the first question is selected
+→ answer choices are displayed
+```
 
 ### 设计原则
 
-- 不长篇讲概念
-- 不强行上课
-- 不要求学生写复杂解释
-- 只解释当前 milestone 必须理解的运行逻辑
-- 尽量用“动作链”表达
+- 不长篇讲 concept
+- 不作为独立 lesson
+- 与 done checklist 对齐
+- 只解释当前 milestone 需要的 computational plan
+- 允许学习者改写或确认 sketch
 
-### 示例
+### 产品作用
 
-Milestone 2：让恐龙跳起来
-
-```text
-这个跳跃功能大概这样工作：
-
-玩家按下空格
-→ 恐龙获得一个向上的速度
-→ 每一帧，重力把恐龙往下拉
-→ 如果恐龙碰到地面，就停止下落
-```
-
-图示：
-
-```text
-[Space key]
-    ↓
-[jump speed]
-    ↓
-[gravity pulls down]
-    ↓
-[land on ground]
-```
-
-### 可选交互
-
-在进入 coding 前，系统可以问一个轻量 prediction：
-
-```text
-如果没有“重力”这一步，恐龙可能会怎样？
-
-A. 跳起来后一直飞走
-B. 自动变成红色
-C. 游戏马上结束
-```
-
-注意：此类问题应短、轻、服务于制作，不应给学生造成考试感。
+Done checklist + logic sketch 将 implementation request 转化为 planning-monitoring artifact。
 
 ---
 
-## 7.6 Module F：Feature Coding Cycle / 小步制作循环
+## Module F：Build with AI Support
 
-### 功能目标
+### 目标
 
-吸收 PRIMM 思想，但不在学生端显性称为 PRIMM。学生端可以叫：
+在 bounded milestone 范围内小步实现，而不是一次性完成整个项目。
 
-```text
-Guess → Try → Look → Change → Build
-```
+### AI 行为边界
 
-### PRIMM 转译
+AI 可以：
 
-| PRIMM | 学生端表达 | 产品行为 |
-|---|---|---|
-| Predict | Guess | 先猜一下会发生什么 |
-| Run | Try | 运行预览 |
-| Investigate | Look | 看代码与画面的关系 |
-| Modify | Change | 改一小处 |
-| Make | Build | 做成自己的版本 |
+- write small patch
+- modify relevant code
+- explain what changed
+- point to the part related to the milestone
+- propose limited implementation choices
 
-### 标准循环
+AI 不应：
 
-```text
-1. AI 提出当前小功能
-2. 学生做一个轻量预测或选择
-3. AI 生成小 patch
-4. 系统显示 change summary
-5. 学生运行 preview
-6. 学生观察是否符合 done checklist
-7. 如果成功，学生进行一个小修改
-8. 如果失败，进入 visual debugging
-9. 完成后 mini-explain
-10. 连接到下一个 milestone
-```
+- complete the whole project
+- add large unrequested features
+- silently restructure the project
+- skip done checklist
+- skip logic sketch
+- turn the learner’s idea into an AI-owned specification
 
-### 示例
+### Build 前置条件
 
-AI：
+Build 前必须存在：
 
-```text
-我们现在要做：按空格让恐龙跳起来。
-
-Before we code:
-你觉得按空格后，恐龙应该发生什么？
-
-A. 立刻向上跳，然后落下
-B. 慢慢变大
-C. 消失再出现
-```
-
-学生选择 A。
-
-AI：
-
-```text
-好，我们先做一个小版本。
-这次我只会添加跳跃相关的代码，不会改其他功能。
-```
-
-系统展示 change summary：
-
-```text
-这次会改动：
-- 添加一个 jump speed
-- 监听空格键
-- 让恐龙每一帧受到 gravity 影响
-```
-
-然后生成代码或 patch。
-
-### 代码展示原则
-
-学生端不应只看到大段代码。建议提供三种视图：
-
-1. Preview-first view：默认显示作品运行效果。
-2. Change summary：用自然语言总结改了什么。
-3. Code view：可展开，显示实际代码。
-
-对于低龄学生，默认隐藏完整代码；对于更有兴趣的学生，可以展开查看。
+1. selected milestone
+2. done checklist
+3. logic sketch
+4. learner confirmation or lightweight choice
 
 ---
 
-## 7.7 Module G：Live Preview / Deployment Surface
+## Module G：Preview and Test
 
-### 功能目标
+### 目标
 
-让每次 coding 都能立刻看到运行结果；让 bug 以可观察现象出现，而不是只以错误日志出现。
+让 learner 比较 expected behavior 与 observed behavior。
 
 ### 为什么重要
 
-Live Preview 是本产品的核心学习表面。
+Preview 是本产品的主要 learning surface。
 
-学生通过 preview 理解：
+学习者不是先从 error log 理解 bug，而是先从可见行为理解：
 
-- 功能是否实现
-- bug 出在哪里
-- 改动产生了什么效果
-- 代码与画面之间的关系
-- 当前 milestone 是否完成
+- What did I expect?
+- What happened instead?
+- Which checklist item failed?
+- What does this reveal about the logic sketch?
 
-### UI 建议
-
-主界面建议三栏布局：
-
-```text
-左栏：Project Path / Milestones
-中间：Live Preview
-右栏：AI Build Companion
-底部：Code / Changes / Console，可折叠
-```
-
-中间 Live Preview 应始终保持核心位置。
-
-### Preview 功能
+### Preview 功能需求
 
 - Run / Stop / Restart
-- Auto-refresh after patch
-- Version history
-- Screenshot bug capture
-- Highlight changed behavior
-- Compare before / after
-- Share preview link
-- Fullscreen play mode
-- Console 可折叠
+- Instant preview
+- Visible behavior capture
+- Before / after comparison
+- Checklist-linked testing
+- Console 折叠显示
+- Shareable preview link
+- Version checkpoint
 
-### Deployment 功能
+### 产品原则
 
-产品应支持学生随时获得一个可运行链接：
-
-```text
-Share my project
-复制链接
-全屏试玩
-```
-
-这里的 deployment 不一定是正式生产部署，但必须让学生感受到作品真的可以被打开、试玩和分享。
+Preview 不只是展示成果，而是用于 metacognitive monitoring。
 
 ---
 
-## 7.8 Module H：Visual Debugging / 视觉化调试
+## Module H：Fix Observed Behavior
 
-### 功能目标
+### 目标
 
-从运行现象出发帮助学生理解和修复 bug。
-
-### 设计原则
-
-- 先描述看到的现象
-- 再让学生猜测可能原因
-- 再定位相关逻辑或代码
-- 最后提供小修复
-- 不直接黑箱修好
+把 debugging 从 code replacement 转向 phenomenon-driven reasoning。
 
 ### Debugging Flow
 
-```text
-1. 观察现象
-2. 选择可能原因
-3. 系统解释原因
-4. 展示相关代码或逻辑
-5. 提供修复建议
-6. 学生选择：看解释 / 应用 / 自己改
-7. 运行 preview 验证
-```
-
-### 示例：角色跳起来不落下
-
-系统观察：
-
-```text
-我看到一个问题：
-恐龙跳起来之后没有落回地面。
-```
-
-系统提问：
-
-```text
-你觉得问题可能在哪里？
-
-A. 空格键没有被识别
-B. 恐龙有向上的速度，但没有被拉下来
-C. 地面颜色不对
-```
-
-学生选择 B。
-
-系统解释：
-
-```text
-对，更可能是 B。
-现在恐龙会向上动，但我们还没有让 gravity 每一帧把它拉下来。
-```
-
-修复建议：
-
-```text
-我建议加上这一点：
-每一帧，让 vertical speed 增加一点 gravity。
-
-这样恐龙会先上升，然后慢慢落下。
-```
-
-操作：
-
-```text
-[看代码变化] [应用修复] [我想自己改]
-```
-
-### Debugging 不同类型
-
-1. Interaction bug
-
-- 按钮没反应
-- 键盘输入无效
-- 拖动不起作用
-
-2. Motion bug
-
-- 角色不动
-- 角色飞走
-- 角色抖动
-- 障碍物速度异常
-
-3. State bug
-
-- 分数不变
-- 分数变 NaN
-- 游戏状态不切换
-- 失败后无法重玩
-
-4. Layout bug
-
-- 元素挤在一起
-- 按钮超出屏幕
-- 文字看不清
-
-5. Logic bug
-
-- 答对却显示错误
-- 碰撞判断太早或太晚
-- 条件永远不触发
-
-### 关键要求
-
-Debugging 必须依赖 live preview，而不是只依赖 console。
-
----
-
-## 7.9 Module I：Mini Explain / 轻量解释
-
-### 功能目标
-
-在 milestone 或关键改动完成后，用非常轻的方式帮助学生确认自己理解了“刚刚发生了什么”。
-
-### 设计原则
-
-- 不写长反思
-- 不做大段解释题
-- 不打断创作节奏
-- 一次只问一个问题
-- 问题应服务于下一步制作
-
-### 题型
-
-1. 选择题
-
-```text
-这一步我们主要让项目多了什么能力？
-
-A. 屏幕上出现角色和地面
-B. 让角色跳起来
-C. 让游戏结束
-```
-
-2. 一句话解释
-
-```text
-用一句话说：这次改动让项目多了什么能力？
-```
-
-3. 点击对应
-
-```text
-点击你认为负责“跳起来”的那一小段代码。
-```
-
-4. 预测下一步
-
-```text
-如果我们接下来要加障碍物，你觉得需要先做什么？
-
-A. 让一个物体从右边移动过来
-B. 改恐龙颜色
-C. 删除地面
-```
-
-### 何时触发
-
-- 每个 milestone 完成后
-- 关键 bug 修复后
-- 学生连续多次让 AI 自动生成后
-- 进入下一个 milestone 前
-
-### 不应触发
-
-- 学生刚刚输入创作想法时
-- 学生正在高兴试玩时
-- 学生频繁修改视觉样式时
-- 学生明显处于高 momentum 状态时
-
----
-
-## 7.10 Module J：Next Milestone Bridge / 下一步连接
-
-### 功能目标
-
-把当前完成的内容自然连接到下一个 milestone，保持创作 momentum。
+1. 描述 observed behavior
+2. 对照 expected behavior
+3. 标记未满足的 checklist item
+4. 回到 logic sketch 找缺失步骤
+5. 提供小修复建议
+6. 运行 preview 再次比较
 
 ### 示例
 
-Milestone 2 完成：恐龙可以跳。
-
-系统：
+Observed behavior：
 
 ```text
-现在恐龙已经能跳起来了。
+The question appears, but the answer choices do not.
+```
 
-下一步要让它更像跑酷游戏，你想先做什么？
+AI response：
 
-A. 加一个从右边移动过来的仙人掌
-B. 加分数
-C. 加背景移动
-D. 我想自己说
+```text
+Which checklist item failed?
+A. Start button appears
+B. Pressing Start shows one question
+C. The question has four answer choices
+```
+
+然后 AI 指向 logic sketch 中缺失的 display choices step，而不是直接替换全部代码。
+
+### 设计原则
+
+- 先从 learner sees 开始
+- 避免直接说 “Here is the fixed code”
+- 修复建议应最小化
+- 修复后必须回到 preview
+
+---
+
+## Module I：Mini-explain
+
+### 目标
+
+在 milestone 完成或 bug 修复后，用一句话或一个小问题将 visible behavior 与 transferable idea 连接。
+
+### Mini-explain 不是
+
+- 长反思
+- 课后总结
+- 正式 assessment
+- 概念讲座
+
+### Mini-explain 是
+
+- concise link between visible behavior and idea
+- local understanding check
+- bridge to next milestone
+
+### 示例
+
+```text
+When you clicked Start, the program changed state from start screen to question screen. This is why the first question appeared.
+```
+
+或：
+
+```text
+这一步主要用了什么？
+A. Event: clicking Start triggers a change
+B. Styling: changing colors
+C. Storage: saving data permanently
+```
+
+### 学习者选项
+
+学习者可以：
+
+- accept the explanation
+- ask a follow-up
+- return to project flowchart
+- choose next milestone
+
+---
+
+## Module J：Choose Next Milestone
+
+### 目标
+
+将 transfer 设计为 continuation，而不是 reflection homework。
+
+### 核心行为
+
+Milestone 完成后，系统回到 project flowchart，帮助学习者选择下一个 meaningful step。
+
+示例：
+
+```text
+Your first question now appears with answer choices.
+What do you want to make happen next?
+A. Show feedback after an answer
+B. Keep score
+C. Add more questions
+D. Change the visual style
+E. I want to edit the flowchart
 ```
 
 ### 设计原则
 
-- 不强制反思
-- 不要求写学习总结
-- 把“反思”转化为“下一步选择”
-- 让学生感觉项目正在成长
+- 反思不单独成为重任务
+- 下一步选择本身就是 transfer
+- 学生可以修改 flowchart，而不是被固定路径推进
 
 ---
 
-## 8. 用户流程
+# 7. Mentor / Facilitator Support
 
-## 8.1 首次完整流程
+## 7.1 介入时机
 
-```text
-1. 学生打开产品
-2. 输入：我想做一个……
-3. AI 进行 2–3 个轻量澄清
-4. AI 生成 Project Path
-5. 学生确认或调整 path
-6. 系统默认进入 Milestone 1
-7. AI 生成 Done Checklist
-8. AI 展示 Logic Sketch
-9. 学生做一个轻量 Guess
-10. AI 生成小 patch
-11. 学生运行 Live Preview
-12. 系统帮助检查 checklist
-13. 如果出现 bug，进入 Visual Debugging
-14. 如果完成，进行 Mini Explain
-15. 系统连接到下一个 milestone
-```
+Mentor / facilitator support 只在 metacognitive pressure points 出现时介入：
 
-## 8.2 Returning User 流程
+- stuck judging a path
+- stuck choosing a first milestone
+- stuck revising project flowchart
+- stuck interpreting why preview differs from done checklist
+- AI proposes complete solution too early
+- learner is overwhelmed by too many options
 
-```text
-1. 学生打开已有项目
-2. 系统显示当前 Project Path 和进度
-3. 系统提示：你上次完成了 X，现在可以继续 Y
-4. 学生选择继续当前 milestone 或进入下一个 milestone
-5. 进入 feature coding cycle
-```
+## 7.2 介入方式
 
-系统文案示例：
+系统可提供：
 
-```text
-欢迎回来。
-你上次已经完成了：恐龙可以跳起来。
+- “Ask mentor to compare paths”
+- “Ask mentor to help choose first milestone”
+- “Ask mentor to simplify this flowchart”
+- “Ask mentor to review why preview differs”
 
-现在可以继续：让仙人掌从右边出现。
-```
+## 7.3 Mentor 看见什么
 
-## 8.3 学生偏离原计划
+Mentor 不需要看全部聊天或接管项目。
 
-学生可能在 Milestone 2 中突然说：
+建议显示：
 
-```text
-我想先给恐龙换成机器人
-```
+- learner idea
+- current project flowchart
+- current milestone
+- done checklist
+- observed behavior
+- where the learner is stuck
+- AI’s current suggestion
 
-系统不应拒绝，而应轻量处理：
+## 7.4 Mentor 不应做什么
 
-```text
-可以，这是一个外观改动，不会影响我们正在做的跳跃功能。
+Mentor 不应：
 
-你想：
-A. 现在换外观
-B. 先完成跳跃，再换外观
-C. 把“换成机器人”加入后面的 polish step
-```
+- 直接替学生决定项目方向
+- 直接让 AI 完成整个项目
+- 把 checklist 变成评分 rubric
+- 过度纠正学生创意
+- 让 project flowchart 完全变成成人的计划
 
-### 原则
+## 7.5 产品定位
 
-- 不强行压制学生创意
-- 但帮助学生理解主线与支线
-- 避免项目失控
+Mentor support is optional, situational, and non-takeover.
 
 ---
 
-## 9. 信息架构
+# 8. 信息架构
 
-### 9.1 主界面
+## 8.1 主工作区结构
 
-建议结构：
+建议界面：
 
 ```text
 ┌─────────────────────────────────────────────┐
 │ Top Bar: Project Name / Save / Share / Help │
 ├───────────────┬────────────────┬────────────┤
-│ Project Path  │  Live Preview   │ AI Companion│
-│ Milestones    │  Run Surface    │ Chat/Guide │
-│ Checklist     │                │            │
+│ Project       │ Live Preview   │ AI          │
+│ Flowchart     │ Surface        │ Companion   │
+│ + Milestone   │                │             │
+│ + Checklist   │                │             │
 ├───────────────┴────────────────┴────────────┤
-│ Bottom Drawer: Code / Changes / Console     │
+│ Bottom Drawer: Logic / Changes / Code / Log │
 └─────────────────────────────────────────────┘
 ```
 
-### 9.2 左栏：Project Path
+## 8.2 左栏：Project Flowchart Panel
 
 内容：
 
-- 项目名称
-- 当前 milestone
-- Milestone list
-- Done Checklist
-- Progress status
+- learner idea
+- project flowchart
+- candidate milestones
+- current bounded milestone
+- done checklist
+- mentor support button
 
 状态：
 
-- Not started
-- In progress
-- Needs fix
-- Done
+- imagined
+- planned
+- selected
+- building
+- previewed
+- needs fix
+- completed
 
-### 9.3 中间：Live Preview
-
-内容：
-
-- 运行画面
-- Run / Stop / Restart
-- Fullscreen
-- Share
-- Bug capture
-- Before / after compare
-
-### 9.4 右栏：AI Build Companion
+## 8.3 中间：Preview and Test Surface
 
 内容：
 
-- 当前引导
-- 选项问题
-- 学生输入
-- 建议
-- 小解释
-- 下一步
+- running artifact
+- expected behavior
+- observed behavior
+- checklist test markers
+- before / after behavior
+- screenshot or state capture
 
-### 9.5 底部：Code / Changes / Console
+## 8.4 右栏：AI Companion
 
-默认折叠。
+负责：
+
+- asking learner-facing decisions
+- offering 2–4 path options
+- receiving free input
+- explaining next step
+- pointing to checklist / logic sketch
+- mini-explaining after fixes
+
+## 8.5 底部：Logic / Changes / Code / Log Drawer
 
 Tabs：
 
-- Changes：这次改了什么
-- Code：实际代码
-- Console：错误日志
-- History：版本记录
+- Logic sketch
+- AI changes
+- Code
+- Console / error log
+- Version history
 
-低龄用户默认显示 Changes，不默认显示完整 Code。
+默认优先显示 Logic sketch 和 Changes，Code 可展开。
 
 ---
 
-## 10. Agent 行为设计
+# 9. Agent 行为设计
 
-### 10.1 Agent 总体角色
+## 9.1 Agent 总角色
 
-Agent 不是教师，不是监工，也不是代工者。
+Agent 是 project progression companion，不是 hidden planner。
 
-Agent 是：
+它帮助学习者：
 
-> 一个懂编程、懂项目拆解、懂孩子创作动机、不会抢走作品控制权的制作伙伴。
+- imagine artifact
+- co-plan flowchart
+- choose milestone
+- articulate criteria
+- sketch logic
+- build small patch
+- compare preview behavior
+- fix observed behavior
+- connect to next milestone
 
-### 10.2 Agent 核心规则
+## 9.2 Agent 核心规则
 
-1. 不直接完成整个项目。
-2. 先把 idea 拆成 path。
-3. 每次只处理一个 milestone。
-4. 每次只改动当前 milestone 所需代码。
-5. 尽量保持学生原始创意。
-6. 不主动添加学生未要求的大功能。
-7. 遇到 bug 时先描述现象，再定位原因。
-8. 解释要短，服务于制作。
-9. 每个 milestone 完成后连接下一步。
-10. 保护学生 motivation 优先于展示教学完整性。
+1. Start from learner idea.
+2. Do not produce whole-project code at entry.
+3. Build project flowchart before code.
+4. Offer choices, not assignments.
+5. Always allow free input.
+6. Treat each flowchart node as candidate milestone only after visible behavior is named.
+7. Tie implementation help to learner-selected criteria.
+8. Use preview-driven debugging before code replacement.
+9. Use mini-explain, not heavy reflection.
+10. Return to project flowchart for next milestone.
+11. Invite mentor / facilitator support at planning impasses.
+12. Avoid becoming the hidden planner.
 
-### 10.3 Agent 内部模块
-
-| 模块 | 学生端角色名 | 内部职责 |
-|---|---|---|
-| Idea Buddy | 想法伙伴 | 理解模糊想法，轻量澄清 |
-| Path Builder | 路线规划器 | 生成 milestone path |
-| Milestone Coach | 里程碑伙伴 | 处理当前 milestone |
-| Build Agent | 制作助手 | 生成小 patch |
-| Preview Agent | 预览检查员 | 检查运行结果 |
-| Fix Agent | 修复伙伴 | 从现象出发 debug |
-| Next-Step Agent | 下一步推荐器 | 连接下一个 milestone |
-
-### 10.4 Agent 状态机
+## 9.3 Agent 状态机
 
 ```text
 IDEA_CAPTURED
-→ CLARIFYING
-→ PATH_GENERATED
-→ PATH_CONFIRMED
-→ MILESTONE_SELECTED
-→ CHECKLIST_GENERATED
-→ LOGIC_SKETCHED
+→ IDEA_REFLECTED
+→ LIGHT_CLARIFICATION
+→ FLOWCHART_OPTIONS_GENERATED
+→ FLOWCHART_CO_PLANNED
+→ MILESTONE_CANDIDATES_IDENTIFIED
+→ NEXT_MILESTONE_SELECTED
+→ DONE_CHECKLIST_ARTICULATED
+→ LOGIC_SKETCH_CREATED
 → READY_TO_BUILD
-→ PATCH_PROPOSED
+→ AI_PATCH_PROPOSED
 → PATCH_APPLIED
-→ PREVIEW_RUNNING
-→ NEEDS_DEBUG / MILESTONE_DONE
+→ PREVIEW_RUN
+→ BEHAVIOR_COMPARED
+→ NEEDS_FIX / MILESTONE_COMPLETED
 → MINI_EXPLAIN
-→ NEXT_MILESTONE
+→ NEXT_MILESTONE_SELECTION
+→ FLOWCHART_REVISED_OR_CONTINUED
 ```
 
-### 10.5 关键“学习刹车”
-
-产品不是完全自由生成器，因此需要轻量刹车：
+## 9.4 关键 gating rules
 
 ```text
-No path, no full project.
-没有路径，不生成完整项目。
-
-No milestone, no coding.
-没有当前 milestone，不开始 coding。
-
-No visible result, no done.
-没有可见结果，不标记完成。
-
-No heavy reflection.
-不做重反思。
-
-Always next step.
-每次解释后都连接下一步。
+No flowchart, no full build.
+No visible behavior, no milestone.
+No done checklist, no broad implementation help.
+No logic sketch, no code generation.
+No preview, no completion.
+No observed behavior, no debugging claim.
+No heavy reflection; always bridge to next milestone.
 ```
 
 ---
 
-## 11. Prompt / Instruction 草案
+# 10. Prompt / Instruction 草案
 
-### 11.1 System Instruction 草案
+## 10.1 System Instruction
 
 ```text
-You are an AI build companion for K-12 students.
-Your goal is to help students turn their own project ideas into working digital creations while preserving their motivation, agency, and understanding.
+You are a Goal-to-Milestone AI companion for upper-elementary and middle-school learners engaged in student-initiated creative programming.
+
+Your purpose is not to complete the whole project for the learner. Your purpose is to help the learner preserve ownership while turning a personally meaningful idea into a revisable project flowchart, bounded milestones, observable done criteria, logic sketches, small builds, preview-driven debugging, mini-explanations, and next-milestone choices.
 
 Core rules:
-- Do not directly complete the entire project.
-- Do not force students to choose grade, lesson length, or learning objectives at entry.
-- Start from the student's own idea.
-- If the idea is vague, ask only 2–3 lightweight clarification questions.
-- Turn the idea into a milestone-based project path.
-- Each milestone must be small, visible, and testable in live preview.
-- For each milestone, create a short done checklist.
-- Before coding, show a short logic sketch.
-- Code in small patches only.
-- After each patch, encourage the student to run and observe the live preview.
-- When debugging, start from visible behavior, not error logs.
-- Explanations must be short and useful for the current build.
-- Avoid long reflections unless the student asks.
-- After a milestone is completed, connect it to the next milestone.
-- Always protect the student's creative momentum.
-
-Tone:
-- Encouraging
-- Clear
-- Not childish
-- Not overly academic
-- Not teacher-like
-- More like a helpful project partner
+- Start from the learner’s idea, phrase, sketch, story, theme, or desired behavior.
+- Do not ask for grade level, lesson length, or formal learning objectives at entry.
+- Do not generate whole-project code at the beginning.
+- First reflect and clarify what the learner imagines someone can see, do, choose, change, or share.
+- Help the learner and AI co-construct a project flowchart by reasoning backward from the imagined artifact.
+- Offer two to four possible paths as choices, not assignments, and always allow free input.
+- A flowchart node becomes a milestone only after the learner helps name the visible behavior that should change.
+- Before coding, create a done checklist and a logic sketch.
+- Keep code generation inside the current bounded milestone.
+- Use preview to compare expected and observed behavior.
+- When behavior differs, ask which checklist item failed and connect the issue to the logic sketch.
+- Give mini-explanations that link visible behavior to transferable ideas.
+- Return to the flowchart and help the learner choose the next milestone.
+- Invite mentor or facilitator support only at planning impasses or interpretation difficulties.
+- Preserve motivation, agency, and learner-owned progression.
 ```
 
-### 11.2 Path Generation Prompt 草案
+## 10.2 Flowchart Generation Prompt
 
 ```text
-Given the student's project idea, generate a milestone-based project path.
+Given the learner’s idea, help the learner reason backward from the imagined finished artifact into a lightweight project flowchart.
 
-Requirements:
-- Do not generate code yet.
-- Create 4–6 milestones.
-- Each milestone must have a visible output.
-- Each milestone should be small enough to complete in one build cycle.
-- Start with a minimum playable or visible version.
-- Mention concepts lightly, without making them feel like a lesson.
-- Use student-friendly language.
-- Preserve the student's original idea.
-- Do not add large features not requested by the student.
+Do not write code.
+Do not create a full specification.
+Generate two to four possible project paths, phrased as learner choices.
+Each path should include visible steps such as screens, states, data, interactions, feedback, and ordering.
+Allow the learner to select, combine, rename, reorder, skip, replace, or add free-input path items.
+The output should be a revisable project flowchart, not a fixed plan.
 ```
 
-### 11.3 Milestone Prompt 草案
+## 10.3 Milestone Prompt
 
 ```text
-For the selected milestone, generate:
-1. A short milestone goal.
-2. A done checklist with 3–5 visible criteria.
-3. A simple logic sketch.
-4. One lightweight prediction question.
-5. A small build plan.
+From the current project flowchart, help the learner choose the next bounded milestone.
 
-Do not write code until the student confirms or answers the prediction question.
+A good milestone must:
+- be easy to start,
+- be visibly connected to the desired project,
+- be framed as inspectable behavior,
+- be small enough to build and preview,
+- be tied to learner-selected criteria before code generation.
+
+Ask the learner what visible behavior should change.
+Do not frame the milestone as an internal coding task if it can be framed as visible behavior.
 ```
 
-### 11.4 Debug Prompt 草案
+## 10.4 Done Checklist + Logic Sketch Prompt
 
 ```text
-When a bug appears, respond in this order:
-1. Describe the visible behavior in plain language.
-2. Ask the student to choose a likely cause from 2–3 options.
-3. Explain the likely cause briefly.
-4. Show the smallest relevant code or logic area.
-5. Propose a small fix.
-6. Let the student choose: see explanation, apply fix, or try themselves.
-7. After applying, ask the student to run preview again.
+For the selected milestone, create:
+1. A short milestone statement phrased as visible behavior.
+2. A done checklist with 3–5 observable criteria.
+3. A logic sketch using pseudo-code, cards, state diagram, or natural-language sequence.
 
-Do not silently fix the bug without explaining the visible cause.
+The checklist is not a rubric or grade.
+The logic sketch should make the computational plan visible without becoming a long lesson.
+Do not generate code until the learner confirms or revises these items.
+```
+
+## 10.5 Preview Debugging Prompt
+
+```text
+When preview behavior differs from expectation:
+1. Describe what the learner can see.
+2. Ask what was expected.
+3. Ask which done-checklist item failed.
+4. Point to the related step in the logic sketch.
+5. Suggest the smallest relevant fix.
+6. Let the learner apply, revise, ask for explanation, or try themselves.
+7. Run preview again.
+
+Do not replace the whole code solution without connecting the fix to observed behavior and the checklist.
 ```
 
 ---
 
-## 12. Milestone 质量标准
+# 11. MVP Scope
 
-### 12.1 好的 milestone
+## 11.1 MVP 核心目标
 
-一个好的 milestone 应该：
+验证以下 conjectures：
 
-- 有清楚边界
-- 有一个可见成果
-- 可以独立运行或验证
-- 不包含太多功能
-- 不需要学生一次理解太多概念
-- 能自然连接下一步
+1. Learners can begin from personally meaningful ideas.
+2. Learner + AI can co-construct revisable project flowcharts.
+3. Project flowcharts can reduce open-ended planning load without removing ownership.
+4. Bounded milestones can keep AI support tied to visible learner-selected behavior.
+5. Done checklists can support criteria articulation without becoming rubrics.
+6. Logic sketches can make computational planning visible before build.
+7. Preview-driven debugging can support monitoring of program behavior.
+8. Mini-explanations can support lightweight reflection without interrupting motivation.
+9. Mentor visibility can support planning impasses without task takeover.
 
-### 12.2 示例
+## 11.2 MVP 必做功能
 
-坏 milestone：
-
-```text
-完成游戏核心逻辑
-```
-
-问题：太大，不可观察，边界模糊。
-
-好 milestone：
-
-```text
-按空格后，恐龙跳起并落回地面
-```
-
-原因：可观察、可测试、边界清晰。
-
-坏 milestone：
-
-```text
-制作完整背单词系统
-```
-
-好 milestone：
-
-```text
-显示一个英文单词，并让玩家选择对应中文意思
-```
-
-坏 milestone：
-
-```text
-做一个海洋生态系统
-```
-
-好 milestone：
-
-```text
-让三种海洋生物在屏幕中缓慢移动
-```
-
----
-
-## 13. 项目类型支持
-
-虽然入口不要求学生选择项目类型，但系统内部需要识别项目类型，以便生成合适路径。
-
-### 13.1 初期建议支持类型
-
-1. Simple game
-
-- 跑酷游戏
-- 接物游戏
-- 问答游戏
-- 迷宫游戏
-- 点击反应游戏
-
-2. Interactive story
-
-- 分支故事
-- 角色对话
-- 选择结局
-
-3. Animation / simulation
-
-- 生态系统动画
-- 天气模拟
-- 星球运动
-- 生物运动
-
-4. Learning tool
-
-- 背单词小游戏
-- 数学练习器
-- quiz app
-- flashcard tool
-
-5. Simple website
-
-- 个人主页
-- 班级投票页
-- 作品展示页
-- 兴趣介绍页
-
-### 13.2 初期不建议重点支持
-
-- 大型多人在线游戏
-- 复杂 3D 游戏
-- 涉及真实支付的产品
-- 涉及外部账号系统的复杂应用
-- 高风险社交产品
-- 需要复杂后端安全设计的系统
-
-对于过大项目，系统应帮助学生缩小为 minimum version，而不是直接拒绝。
-
-示例：
-
-```text
-这个想法很大。我们可以先做一个小版本：
-先让一个玩家在本地完成核心玩法，之后再考虑多人功能。
-```
-
----
-
-## 14. Live Preview 技术要求
-
-### 14.1 基础要求
-
-- 支持即时运行
-- 支持自动刷新
-- 支持错误捕捉
-- 支持 preview link
-- 支持版本回滚
-- 支持 before / after 对比
-
-### 14.2 运行环境建议
-
-MVP 阶段建议优先支持：
-
-- HTML/CSS/JavaScript
-- p5.js
-- simple React sandbox
-- block-like abstraction for younger learners
-
-不建议 MVP 一开始支持过多语言。
-
-### 14.3 安全要求
-
-- 沙箱运行学生代码
-- 禁止任意网络请求或默认限制外部请求
-- 禁止暴露 API keys
-- 限制文件系统访问
-- 限制危险脚本
-- 支持内容安全审查
-- 支持项目公开/私密设置
-
----
-
-## 15. Versioning / History
-
-### 15.1 为什么重要
-
-学生在 AI 帮助下制作项目时，很容易出现：
-
-- AI 改坏了
-- 学生想回到之前版本
-- 某个功能完成后希望保存
-- debug 过程中需要比较前后差异
-
-### 15.2 功能需求
-
-- 每次 patch 自动生成 checkpoint
-- milestone 完成时生成 named checkpoint
-- 支持 rollback
-- 支持 before / after preview
-- 支持 change summary
-
-### 15.3 学生端文案
-
-```text
-已保存一个版本：恐龙可以跳起来
-```
-
-```text
-这个修改让项目出问题了。要回到上一个能运行的版本吗？
-```
-
----
-
-## 16. Motivation Protection 机制
-
-### 16.1 需要保护的时刻
-
-- 学生刚输入想法时
-- 学生第一次看到作品运行时
-- 学生正在试玩时
-- 学生主动提出创意修改时
-- 学生遇到 bug 但还没有挫败时
-
-### 16.2 应避免的行为
-
-- 一开始要求填复杂表单
-- 一开始解释大量编程概念
-- 频繁要求反思
-- 频繁纠正学生想法
-- 过早说“这个太难”
-- 用课程语言压过创作语言
-- AI 自作主张添加很多功能
-
-### 16.3 应鼓励的行为
-
-- 快速把想法变成路径
-- 尽快让学生看到第一个可运行结果
-- 保留学生的命名、角色和风格
-- 把困难项目缩小，而不是否定
-- 把解释压缩成当前需要的一小点
-- 每次完成后推荐一个自然下一步
-
----
-
-## 17. 轻量学习记录
-
-虽然产品不强绑定教师，但可以为学生自己保留轻量学习记录。
-
-### 17.1 记录内容
-
-- 我做了什么项目
-- 我完成了哪些 milestone
-- 我学会/用到了哪些概念
-- 我修复过哪些 bug
-- 我做过哪些关键决定
-- 我分享了哪个版本
-
-### 17.2 展示方式
-
-不要叫“学习档案”太正式，可以叫：
-
-```text
-My Build Journey
-我的制作路线
-```
-
-### 17.3 示例
-
-```text
-这个项目里，你已经完成：
-✓ 画出角色和地面
-✓ 让角色按空格跳起来
-✓ 修复了“角色飞走不落下”的 bug
-
-你用到过：
-- keyboard event
-- position
-- speed
-- gravity
-```
-
-### 17.4 用途
-
-- 帮学生回顾
-- 帮系统推荐下一步
-- 未来可作为作品展示的一部分
-- 可选分享给家长或老师
-
----
-
-## 18. MVP 范围
-
-### 18.1 MVP 目标
-
-验证以下核心假设：
-
-1. 学生愿意从“我想做一个……”开始与 AI 共创。
-2. LLM 可以把模糊 idea 稳定拆成小 milestone。
-3. 小 milestone + live preview 可以维持学生 motivation。
-4. 学生可以接受轻量 done checklist 和 mini explain。
-5. Visual debugging 比纯错误日志更适合 novice learners。
-
-### 18.2 MVP 必做功能
-
-1. Idea input
+1. Idea-first input
 2. Light clarification
-3. Project Path generation
-4. Milestone selection
-5. Done checklist
-6. Logic sketch
-7. Small patch coding
-8. Live preview
-9. Visual debugging basic flow
-10. Mini explain
-11. Next milestone bridge
-12. Version checkpoint
+3. Project flowchart generator
+4. Flowchart editing: select, combine, rename, reorder, skip, replace
+5. Next bounded milestone selection
+6. Done checklist generator
+7. Logic sketch generator
+8. Small AI patch generation
+9. Live preview and test
+10. Checklist-linked behavior comparison
+11. Fix observed behavior flow
+12. Mini-explain
+13. Choose next milestone
+14. Version checkpoints
+15. Optional mentor support request at planning impasses
 
-### 18.3 MVP 可暂缓功能
+## 11.3 MVP 暂缓功能
 
-- 教师 dashboard
-- 家长 dashboard
-- 多人协作
-- 完整课程系统
-- 高级知识图谱
-- 多语言编程环境
-- 完整 block-based editor
-- 大规模作品社区
-- AI 自动评分
+- full teacher dashboard
+- formal assessment analytics
+- mandatory learning objectives
+- course mode
+- multi-user classroom management
+- full community gallery
+- complete block-based editor
+- complex backend deployment
+- AI grading
+- long reflective journaling
 
-### 18.4 MVP 推荐技术路径
+## 11.4 推荐技术路径
 
 前端：
 
 - React / Next.js
 - 三栏式 workspace
-- iframe preview
-- Monaco editor 可选
+- flowchart editor
+- live preview surface
+- bottom drawer for logic/code/log
 
 运行环境：
 
-- HTML/CSS/JS sandbox
+- HTML/CSS/JavaScript sandbox
 - p5.js sandbox
-- WebContainer 或类似轻量运行环境
+- simple React sandbox as later extension
 
 后端：
 
-- Node.js / Python agent orchestrator
-- LLM API integration
-- project state storage
-- patch generation and validation
+- LLM orchestration layer
+- project state manager
+- code patch generator
+- preview runner
+- checkpoint service
+- mentor support event handler
 
-数据库：
+数据：
 
 - users
 - projects
+- project_flowcharts
+- flowchart_nodes
 - milestones
+- done_checklists
+- logic_sketches
+- build_events
+- preview_events
+- observed_behavior_reports
+- mini_explain_events
+- mentor_support_events
 - checkpoints
-- chat/build events
-- learning trace
 
 ---
 
-## 19. 数据结构草案
+# 12. 数据结构草案
 
-### 19.1 Project
+## 12.1 Project
 
 ```json
 {
   "project_id": "string",
   "owner_id": "string",
-  "title": "Dinosaur Runner",
-  "original_idea": "我想做一个恐龙逃跑游戏",
-  "project_type_inferred": "game",
-  "current_milestone_id": "m2",
+  "title": "School Quiz Game",
+  "original_idea": "I want to make a quiz game about my school.",
+  "current_flowchart_id": "flow_001",
+  "current_milestone_id": "m_001",
   "status": "in_progress",
   "created_at": "datetime",
   "updated_at": "datetime"
 }
 ```
 
-### 19.2 Milestone
+## 12.2 Project Flowchart
 
 ```json
 {
-  "milestone_id": "m2",
+  "flowchart_id": "flow_001",
   "project_id": "string",
-  "title": "让恐龙按空格跳起来",
-  "visible_output": "按空格时，恐龙跳起再落下",
-  "concepts": ["keyboard event", "speed", "gravity"],
-  "done_checklist": [
-    "按空格时，恐龙会向上移动",
-    "恐龙不会一直飞走，会落回地面",
-    "恐龙落地后，可以再次跳"
+  "nodes": [
+    {
+      "node_id": "n_start",
+      "label": "Start screen",
+      "visible_purpose": "Player sees the title and Start button",
+      "status": "planned"
+    },
+    {
+      "node_id": "n_question",
+      "label": "One playable question",
+      "visible_purpose": "First question appears with four choices",
+      "status": "selected_as_milestone"
+    }
   ],
-  "status": "in_progress"
+  "edges": [
+    {"from": "n_start", "to": "n_question"}
+  ],
+  "revision_history": []
 }
 ```
 
-### 19.3 Build Event
+## 12.3 Milestone
 
 ```json
 {
-  "event_id": "string",
+  "milestone_id": "m_001",
   "project_id": "string",
-  "milestone_id": "m2",
-  "event_type": "patch_applied",
-  "summary": "添加跳跃速度和重力",
-  "student_action": "confirmed",
-  "ai_action": "generated_patch",
+  "flowchart_node_id": "n_question",
+  "title": "Pressing Start shows the first question",
+  "visible_behavior": "When I press Start, the first question appears with four answer choices.",
+  "status": "building",
+  "done_checklist_id": "dc_001",
+  "logic_sketch_id": "ls_001"
+}
+```
+
+## 12.4 Done Checklist
+
+```json
+{
+  "done_checklist_id": "dc_001",
+  "milestone_id": "m_001",
+  "items": [
+    {"text": "Start button appears", "status": "met"},
+    {"text": "Pressing Start shows one question", "status": "met"},
+    {"text": "The question has four answer choices", "status": "not_met"}
+  ]
+}
+```
+
+## 12.5 Logic Sketch
+
+```json
+{
+  "logic_sketch_id": "ls_001",
+  "milestone_id": "m_001",
+  "format": "natural_language_sequence",
+  "steps": [
+    "Player clicks Start",
+    "Game state changes from start to question",
+    "First question is selected",
+    "Answer choices are displayed"
+  ]
+}
+```
+
+## 12.6 Preview Event
+
+```json
+{
+  "preview_event_id": "pe_001",
+  "milestone_id": "m_001",
+  "expected_behavior": "Question appears with four choices",
+  "observed_behavior": "Question appears but choices are missing",
+  "failed_checklist_items": ["The question has four answer choices"],
   "created_at": "datetime"
 }
 ```
 
-### 19.4 Checkpoint
+## 12.7 Mentor Support Event
 
 ```json
 {
-  "checkpoint_id": "string",
+  "mentor_event_id": "me_001",
   "project_id": "string",
-  "milestone_id": "m2",
-  "name": "恐龙可以跳起来",
-  "files_snapshot": {},
-  "preview_url": "string",
-  "created_at": "datetime"
+  "trigger": "planning_impasse",
+  "context": {
+    "current_flowchart_node": "n_storage",
+    "learner_question": "Should storage be part of the first milestone?",
+    "ai_suggestion": "Compare temporary interface state vs persistent storage"
+  },
+  "status": "requested"
 }
 ```
 
 ---
 
-## 20. 成功指标
+# 13. 成功指标
 
-### 20.1 用户行为指标
+## 13.1 不只看项目完成
 
-- idea input 到 path generated 的完成率
-- path generated 到 milestone 1 started 的转化率
-- milestone 1 完成率
-- live preview 运行次数
-- debug 后继续制作率
-- project checkpoint 数量
-- 项目分享率
-- 次日/七日回访率
+Future empirical work 不应只看 learner 是否 finish projects。
 
-### 20.2 学习相关指标
+产品应记录是否发生以下过程：
 
-不要用重测试作为核心指标。可以轻量记录：
+- revise flowcharts
+- articulate done criteria
+- compare expected and observed behavior
+- ask inquiry-oriented questions
+- use mentor / facilitator support at planning impasses
+- maintain learner-owned choices
+- reduce direct complete-solution requests
 
-- 学生是否能完成 mini explain
-- 学生是否能从 bug 现象选择可能原因
-- 学生是否能修改一个参数并观察效果
-- 学生是否能连接到下一个 milestone
-- 学生是否逐渐减少“直接帮我做完”的请求
+## 13.2 产品行为指标
 
-### 20.3 Motivation 指标
+- idea → flowchart conversion rate
+- flowchart revision rate
+- first milestone selection rate
+- done checklist completion rate
+- logic sketch confirmation / revision rate
+- preview run frequency
+- preview-to-fix completion rate
+- mini-explain engagement rate
+- next milestone continuation rate
+- mentor support request rate
 
-- 学生是否连续完成多个 milestone
-- 学生是否主动提出新功能
-- 学生是否回到项目继续做
-- 学生是否愿意分享作品
-- 学生是否在 bug 后仍继续尝试
+## 13.3 学习过程指标
 
----
+- learner names visible behavior before code
+- learner revises flowchart meaningfully
+- learner identifies failed checklist item
+- learner compares expected vs observed behavior
+- learner asks clarification or inquiry-oriented questions
+- learner uses mini-explain to connect behavior with concept
+- learner chooses next milestone based on project flowchart
 
-## 21. 风险与缓解
+## 13.4 Motivation / Ownership 指标
 
-### 21.1 风险：AI 直接代做
-
-缓解：
-
-- 禁止完整项目一次性生成
-- 强制 milestone path
-- patch 小步生成
-- 每次改动显示 change summary
-- 关键节点 mini explain
-
-### 21.2 风险：学习活动太重
-
-缓解：
-
-- explain/reflect 轻量化
-- 一次只问一个问题
-- 用选择题/一句话/点击对应替代长反思
-- 解释后必须连接下一步
-
-### 21.3 风险：项目过大导致失败
-
-缓解：
-
-- 生成 minimum version
-- 大功能自动拆小
-- 告诉学生“我们先做小版本”
-- 将复杂功能加入 later path
-
-### 21.4 风险：学生失去作品控制权
-
-缓解：
-
-- AI 不主动添加未请求大功能
-- 允许学生拒绝/修改 AI 建议
-- 每次 patch 前说明改动范围
-- 支持 rollback
-
-### 21.5 风险：安全与隐私
-
-缓解：
-
-- 沙箱运行
-- 限制外部网络
-- 不暴露 API key
-- 内容安全过滤
-- 分享链接权限控制
-- 对低龄用户提供家长同意机制
+- project continuation after first preview
+- voluntary flowchart edits
+- learner renaming / customizing project elements
+- rejection or revision of AI suggestions
+- return sessions
+- sharing or presentation of artifact
 
 ---
 
-## 22. 设计语气与文案原则
+# 14. Boundary Conditions to Test
 
-### 22.1 语气
+Short paper 明确提出本框架可能失败的条件。因此 PRD 必须将这些作为产品风险，而不是附属备注。
 
-- 鼓励
-- 清楚
-- 不幼稚
-- 不学术化
-- 不像老师训话
-- 像一个靠谱的制作伙伴
+## 14.1 Overlarge milestones
 
-### 22.2 避免文案
+风险：milestone 太大，导致 AI 需要生成过多代码，学生失去理解。
+
+缓解：
+
+- 自动检测 milestone 是否包含多个 visible behaviors
+- 提示拆分
+- 默认推荐 first visible behavior
+
+## 14.2 Over-optioning
+
+风险：AI 给太多路径选项，增加 cognitive load，削弱 autonomy。
+
+缓解：
+
+- 每次只给 2–4 个 path options
+- 始终提供 free input
+- 允许 “I’m not sure”
+
+## 14.3 Checklist-as-rubric
+
+风险：done checklist 被体验为评分表，导致 informal creative programming 变得 school-like。
+
+缓解：
+
+- 文案使用 “done when” 而非 “criteria / rubric”
+- 不给分、不评级
+- 只保留 observable behavior
+
+## 14.4 Checklist fatigue
+
+风险：过多 checklist prompts 打断创作 momentum。
+
+缓解：
+
+- 只在 milestone start 和 preview comparison 使用
+- 不在视觉小改动中频繁触发
+- 允许 compact mode
+
+## 14.5 Weak previews
+
+风险：preview 不足以呈现行为差异，debugging 仍然回到抽象错误日志。
+
+缓解：
+
+- preview surface 作为核心界面
+- checklist-linked preview testing
+- before / after comparison
+- screenshot / state capture
+
+## 14.6 Mentor over-direction
+
+风险：mentor 过度介入，把 learner-owned progression 变成成人计划。
+
+缓解：
+
+- mentor 只在 planning impasses 接入
+- mentor UI 显示 “support without task takeover”
+- mentor action 以比较路径和提问为主
+
+## 14.7 Complete-solution AI before criteria
+
+风险：AI 在 learner articulate criteria 之前给出完整 solution。
+
+缓解：
+
+- gating：no done checklist, no broad implementation help
+- patch scope 必须绑定 milestone
+- AI response 需说明对应 checklist item
+
+---
+
+# 15. 设计语气与文案原则
+
+## 15.1 语气
+
+- supportive
+- concise
+- not childish
+- not teacher-like
+- not evaluator-like
+- project-centered
+- choice-oriented
+
+## 15.2 推荐文案
+
+```text
+What do you want someone to see or do first?
+```
+
+```text
+Let’s turn your idea into a project flowchart.
+```
+
+```text
+Which path feels closest to what you want to make?
+```
+
+```text
+What should visibly change in this milestone?
+```
+
+```text
+Done when...
+```
+
+```text
+Let’s compare what you expected with what happened in preview.
+```
+
+```text
+Which checklist item did not happen yet?
+```
+
+```text
+This fix connects the button click to showing the first question.
+```
+
+```text
+What do you want to make happen next?
+```
+
+## 15.3 避免文案
 
 避免：
 
 ```text
-现在请选择你的年级和学习目标。
+I will build the whole project for you.
 ```
 
 改为：
 
 ```text
-你想做什么？我们可以先做一个小版本。
+Let’s choose the next visible milestone first.
 ```
 
 避免：
 
 ```text
-请反思你在本阶段学到了哪些计算思维概念。
+Write the quiz logic.
 ```
 
 改为：
 
 ```text
-这一步让你的项目多了什么能力？
+When I press Start, the first question appears.
 ```
 
 避免：
 
 ```text
-这个项目太复杂，不适合你。
+Please complete this reflection activity.
 ```
 
 改为：
 
 ```text
-这个想法很大。我们先做一个能跑起来的小版本。
-```
-
-### 22.3 推荐文案
-
-```text
-我们先做最小可玩的版本。
-```
-
-```text
-这一步只改一个小地方。
-```
-
-```text
-先运行看看它现在会怎样。
-```
-
-```text
-我看到一个问题：按钮点了没有反应。
-```
-
-```text
-这可能不是你的想法错了，而是这个功能还少了一步连接。
-```
-
-```text
-现在它已经能动起来了。下一步你想让它更像什么？
+What changed in the preview after this fix?
 ```
 
 ---
 
-## 23. 示例完整用户旅程
+# 16. 示例用户旅程
+
+## 16.1 Scenario A：School Quiz Game
 
 ### Step 1：Idea
 
-学生：
+Learner：
 
 ```text
-我想做一个恐龙逃跑游戏
+I want to make a quiz game about my school.
 ```
 
 AI：
 
 ```text
-太好了。我们可以先把它做成一个能玩的最小版本。
-
-我理解你的想法是：
-玩家控制一只恐龙，躲开障碍物，跑得越久分数越高。
-
-你想让它更像哪一种？
-
-A. 像 Chrome 小恐龙：按空格跳跃
-B. 像跑酷游戏：左右移动躲障碍
-C. 像剧情游戏：选择路线逃跑
-D. 我想自己说
+Great. Let’s imagine the finished game first.
+What should a player see first?
+A. A title screen with a Start button
+B. A question right away
+C. A menu of quiz topics
+D. I want to describe it myself
 ```
 
-### Step 2：Path
+### Step 2：Project Flowchart
 
-学生选 A。
+AI proposes:
+
+```text
+Possible flowchart:
+Start screen
+→ One playable question
+→ Answer feedback
+→ Score
+→ More questions
+→ Styling
+```
+
+Learner edits:
+
+```text
+I want the first question to have four choices.
+```
+
+### Step 3：Bounded Milestone
+
+System suggests:
+
+```text
+First milestone:
+When I press Start, the first question appears with four answer choices.
+```
+
+### Step 4：Done Checklist
+
+```text
+Done when:
+□ Start button appears
+□ Pressing Start shows one question
+□ The question has four answer choices
+□ The answer is not shown yet
+```
+
+### Step 5：Logic Sketch
+
+```text
+Player clicks Start
+→ game state changes to question
+→ first question is selected
+→ four choices are displayed
+```
+
+### Step 6：Build + Preview
+
+AI generates a small patch.
+
+Preview shows question but no choices.
+
+### Step 7：Fix Observed Behavior
 
 AI：
 
 ```text
-Project Path：恐龙逃跑游戏
-
-Milestone 1：画出恐龙和地面
-Milestone 2：让恐龙按空格跳起来
-Milestone 3：让仙人掌从右边移动过来
-Milestone 4：碰到仙人掌就失败
-Milestone 5：加分数和重新开始
+The question appeared, but the answer choices did not.
+Which checklist item failed?
 ```
 
-### Step 3：Milestone 1
-
-AI：
+Learner selects:
 
 ```text
-我们先做 Milestone 1：画出恐龙和地面。
-
-完成条件：
-□ 屏幕上有一只恐龙
-□ 恐龙站在地面上
-□ 点击 Run 后能看到画面
+The question has four answer choices.
 ```
 
-Logic Sketch：
+AI points to missing step in logic sketch and proposes small fix.
+
+### Step 8：Mini-explain
 
 ```text
-这一步的逻辑很简单：
-创建一个画面
-→ 放上地面
-→ 把恐龙放在地面上
+The Start button changed the screen state, and the fixed step now displays the answer choices. This is an example of event handling and state.
 ```
 
-AI 生成小 patch。
-
-学生运行 preview。
-
-### Step 4：Mini Explain
-
-AI：
+### Step 9：Choose Next Milestone
 
 ```text
-这一步我们主要做了什么？
-
-A. 让屏幕上出现角色和地面
-B. 让恐龙跳起来
-C. 让游戏结束
-```
-
-学生选择 A。
-
-AI：
-
-```text
-对。现在你的游戏已经有了第一个可见画面。
-下一步建议：让恐龙按空格跳起来。
-```
-
-### Step 5：Milestone 2 + Debug
-
-学生进入 Milestone 2。
-
-AI：
-
-```text
-完成条件：
-□ 按空格时，恐龙会向上移动
-□ 恐龙不会一直飞走，会落回地面
-□ 恐龙落地后，可以再次跳
-```
-
-Logic Sketch：
-
-```text
-玩家按下空格
-→ 恐龙获得向上的速度
-→ 重力每一帧把恐龙往下拉
-→ 碰到地面后停止下落
-```
-
-学生运行后发现恐龙飞走。
-
-AI：
-
-```text
-我看到一个问题：
-恐龙跳起来之后没有落回地面。
-
-你觉得更可能是哪里少了一步？
-
-A. 空格键没有被识别
-B. 没有让重力把恐龙拉下来
-C. 地面颜色不对
-```
-
-学生选 B。
-
-AI：
-
-```text
-对。我们需要让 gravity 每一帧影响恐龙的 vertical speed。
-我可以帮你加上这个小修复。
-
-[看解释] [应用修复] [我想自己改]
-```
-
-修复后，preview 正常。
-
-AI：
-
-```text
-现在恐龙能跳起并落下了。
-下一步要让游戏更像跑酷，你想先做什么？
-
-A. 加仙人掌
-B. 加分数
-C. 加背景移动
+What do you want to make happen next?
+A. Show feedback after an answer
+B. Keep score
+C. Add more questions
+D. Edit the flowchart
 ```
 
 ---
 
-## 24. 后续版本想象
+## 16.2 Scenario B：Club Volunteer Task App
 
-### V1.1
+### Step 1：Idea
 
-- 更多项目模板，但不作为强入口
-- More visual logic map
-- 更好的 before/after preview
-- 简单作品分享页
-- 学生个人 project gallery
+Learner：
 
-### V1.2
+```text
+I want to make a mini-app for our club volunteer tasks.
+```
 
-- 学生自定义 AI 伙伴风格
-- 轻量成就系统
-- 更多语言支持
-- Scratch-like block + JS 双视图
-- 项目 remix 功能
+### Step 2：Project Flowchart
 
-### V2
+AI helps reverse-plan:
 
-- 可选教师/家长视图
-- 作品社区
-- 更复杂项目部署
-- 多人协作
-- 课程模式作为可选入口，而非核心入口
+```text
+Display tasks
+→ Add new task
+→ Mark task as done
+→ Filter by date
+→ Share app
+```
+
+### Step 3：Planning Impasse
+
+Learner：
+
+```text
+Should storage be part of the first milestone?
+```
+
+System invites mentor / facilitator support:
+
+```text
+A mentor can help compare two paths:
+A. Keep the first milestone visual and temporary
+B. Expand it to include persistent storage
+```
+
+### Step 4：First Milestone
+
+```text
+Three volunteer tasks appear, each has a date, and I can add a new task in preview.
+```
+
+### Step 5：Preview Behavior
+
+After build, new tasks disappear after refresh.
+
+AI frames observed behavior:
+
+```text
+The task appears while the app is open, but disappears after refresh.
+This is a difference between temporary interface state and persistent storage.
+```
+
+Mini-explain connects behavior to state vs. storage.
 
 ---
 
-## 25. 当前 PRD 的核心结论
+# 17. 后续版本路线
 
-本产品的核心不是“AI 帮学生写代码”，而是：
+## V1.0：Core Goal-to-Milestone MVP
 
-> AI 帮学生把创作冲动转化为可走的实现路径，并在路径中的每一步，让学生看到结果、修复问题、理解一点点，然后继续往前走。
+- idea-first entry
+- project flowchart construction
+- bounded milestone selection
+- done checklist
+- logic sketch
+- AI patch
+- live preview
+- observed behavior debugging
+- mini-explain
+- next milestone
+- version checkpoint
 
-最重要的产品链路是：
+## V1.1：Flowchart and Mentor Enhancements
+
+- visual project flowchart editor
+- path comparison mode
+- mentor support requests
+- flowchart revision history
+- planning impasse detection
+
+## V1.2：Richer Representations
+
+- state diagrams
+- card-based logic sketch
+- Scratch-like block view
+- JS/code view toggle
+- before/after preview comparison
+
+## V2：Hybrid Learning Ecosystem
+
+- optional parent/mentor view
+- project gallery
+- club / maker-space mode
+- teacher optional assignment wrapper
+- empirical research dashboard
+
+---
+
+# 18. 当前 PRD 核心结论
+
+本产品的核心不是：
 
 ```text
-idea → path → milestone → done checklist → logic sketch → build → preview/test → fix → mini-explain → next milestone
+prompt → code → working app
 ```
 
-最重要的产品界面是：
+而是：
 
 ```text
-Project Path + Live Preview + AI Build Companion
+learner idea → project flowchart → next bounded milestone → criteria → logic → build → preview → observed behavior fix → mini-explain → next milestone
 ```
 
-最重要的产品原则是：
+最重要的产品创新是：
 
-```text
-Protect motivation.
-Build in small visible steps.
-Preview is the learning surface.
-Explain lightly.
-Always connect to the next milestone.
-```
+1. **Project flowchart as pre-code scaffold**
+2. **Next bounded milestone as unit of AI support**
+3. **Done checklist as shared reference, not rubric**
+4. **Logic sketch as planning-monitoring artifact**
+5. **Preview-driven debugging from observed behavior**
+6. **Mini-explain as lightweight metacognitive bridge**
+7. **Mentor / facilitator support at planning impasses, without task takeover**
 
-最终要实现的体验是：
+最终产品体验应让学习者感觉：
 
-> 学生不是被 AI 带着上了一节编程课，而是在 AI 的帮助下，把自己真的想做的东西一步步做出来，并且在过程中逐渐知道它为什么能运行。
+> 这个项目是我想做的；路线是我和 AI 一起规划的；每一步我知道要让什么发生；当它没有按预期运行时，我知道看哪里；我不是让 AI 直接替我完成，而是在 AI 帮助下持续决定下一步。
 

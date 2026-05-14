@@ -115,6 +115,22 @@ function normalizeProjectPath(response) {
   };
 }
 
+function normalizeChecklistFeedback(response) {
+  const normalizeItem = (item) => ({
+    text: compactText(item?.text, 90),
+    reason: compactText(item?.reason, 140)
+  });
+
+  return {
+    ...response,
+    goodAndCheckable: (Array.isArray(response.goodAndCheckable) ? response.goodAndCheckable : []).slice(0, 4).map(normalizeItem),
+    tooVague: (Array.isArray(response.tooVague) ? response.tooVague : []).slice(0, 4).map(normalizeItem),
+    missingStep: (Array.isArray(response.missingStep) ? response.missingStep : []).slice(0, 4).map(normalizeItem),
+    improvedChecklist: compactList(response.improvedChecklist, 4, 90),
+    assistantMessage: compactText(response.assistantMessage, 180)
+  };
+}
+
 const questionSchema = {
   type: "object",
   additionalProperties: false,
@@ -260,6 +276,30 @@ const projectPathSchema = {
     milestones: { type: "array", minItems: 4, maxItems: 6, items: milestoneSchema },
     starterCode: { type: "string" },
     pathMap: pathMapSchema,
+    assistantMessage: { type: "string", maxLength: 180 }
+  }
+};
+
+const checklistFeedbackItemSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["text", "reason"],
+  properties: {
+    text: { type: "string", maxLength: 90 },
+    reason: { type: "string", maxLength: 140 }
+  }
+};
+
+const checklistFeedbackSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["engineSource", "goodAndCheckable", "tooVague", "missingStep", "improvedChecklist", "assistantMessage"],
+  properties: {
+    engineSource: { type: "string", enum: ["openai"] },
+    goodAndCheckable: { type: "array", maxItems: 4, items: checklistFeedbackItemSchema },
+    tooVague: { type: "array", maxItems: 4, items: checklistFeedbackItemSchema },
+    missingStep: { type: "array", maxItems: 4, items: checklistFeedbackItemSchema },
+    improvedChecklist: { type: "array", minItems: 2, maxItems: 4, items: { type: "string", maxLength: 90 } },
     assistantMessage: { type: "string", maxLength: 180 }
   }
 };
@@ -543,6 +583,26 @@ export async function generateProjectPath(body) {
       pathMap: body.pathMap,
       starterCodeHint:
         "Return a small starter p5.js sketch only. It must not implement milestone gameplay. For the default school quiz, show only a simple title and planning message."
+    })
+  }));
+}
+
+export async function reviewChecklist(body) {
+  return normalizeChecklistFeedback(await callStructuredOpenAI({
+    name: "checklist_feedback_response",
+    schema: checklistFeedbackSchema,
+    system: systemPrompt,
+    user: JSON.stringify({
+      task:
+        "Review a Grade 3 student's draft done checklist. Do not grade. Categorize items as good/checkable, too vague, or missing. Then propose a clearer shared checklist with 2-4 observable/testable items.",
+      milestone: body.milestone,
+      draftChecklist: body.draftChecklist,
+      rules: [
+        "Preserve the student's idea when possible.",
+        "Use child-friendly English.",
+        "Each improved checklist item must describe something visible or testable in the preview.",
+        "Do not mention code syntax."
+      ]
     })
   }));
 }

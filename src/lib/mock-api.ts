@@ -5,7 +5,8 @@ import {
   createProjectPath,
   diagnoseDebug,
   generatePatch,
-  planMilestone
+  planMilestone,
+  reviewChecklist
 } from "@/lib/mvp-engine";
 import { Checkpoint, GoalInterviewTurn, Milestone, PreviewState, ProjectPathMap } from "@/lib/types";
 
@@ -57,6 +58,16 @@ export async function mockPostJson<TResponse>(url: string, body: unknown): Promi
   if (url === "/api/milestone/plan") {
     if (!payload.milestone) throw new Error("milestone is required");
     return delay(planMilestone(payload.milestone as Milestone) as TResponse);
+  }
+
+  if (url === "/api/checklist/review") {
+    if (!payload.milestone) throw new Error("milestone is required");
+    return delay(
+      reviewChecklist({
+        milestone: payload.milestone as Milestone,
+        draftChecklist: String(payload.draftChecklist ?? "")
+      }) as TResponse
+    );
   }
 
   if (url === "/api/build/patch") {

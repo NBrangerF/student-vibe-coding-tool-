@@ -153,6 +153,20 @@ export interface MilestonePlanResponse {
   buildPlan: string[];
 }
 
+export interface ChecklistFeedbackItem {
+  text: string;
+  reason: string;
+}
+
+export interface ChecklistFeedbackResponse {
+  engineSource: AiEngineSource;
+  goodAndCheckable: ChecklistFeedbackItem[];
+  tooVague: ChecklistFeedbackItem[];
+  missingStep: ChecklistFeedbackItem[];
+  improvedChecklist: string[];
+  assistantMessage: string;
+}
+
 export interface PatchResponse {
   code: string;
   changeSummary: string[];

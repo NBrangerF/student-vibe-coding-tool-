@@ -6,7 +6,8 @@ import {
   createProjectPath,
   diagnoseDebug,
   generatePatch,
-  planMilestone
+  planMilestone,
+  reviewChecklist
 } from "@/lib/mvp-engine";
 
 const idea = "I want to make a quiz game about my school.";
@@ -85,6 +86,19 @@ describe("Goal-to-Milestone MVP engine", () => {
     expect(patch.validation.noFullProjectGeneration).toBe(true);
     expect(patch.code).toContain("drawQuestionScreen");
     expect(patch.code).not.toContain("questions = [");
+  });
+
+  it("lets students draft a checklist and then improves vague items", () => {
+    const { milestones } = createProjectPath(idea);
+    const feedback = reviewChecklist({
+      milestone: milestones[2],
+      draftChecklist: "It works\nThe game is fun\nI can click an answer"
+    });
+
+    expect(feedback.tooVague.map((item) => item.text)).toContain("It works");
+    expect(feedback.goodAndCheckable.map((item) => item.text)).toContain("I can click an answer");
+    expect(feedback.improvedChecklist.length).toBeGreaterThanOrEqual(2);
+    expect(feedback.improvedChecklist.some((item) => /correct|feedback|answer/i.test(item))).toBe(true);
   });
 
   it("uses real milestone content instead of id suffixes for generated patches", () => {
