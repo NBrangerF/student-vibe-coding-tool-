@@ -1125,208 +1125,179 @@ export function BuildCompanionWorkspace() {
 
   function renderDashboard() {
     const canMakeMap = Boolean(goalInterview?.readiness.canGeneratePath);
-    const ideaCtaLabel = canMakeMap ? "Make my project map" : goalInterview ? "Keep answering questions" : "Make my project map";
+    const ideaCtaLabel = canMakeMap ? "Make my system trail" : goalInterview ? "Continue in System Trail" : "Start my system trail";
+    const seedTrail = [
+      { title: "Goal", detail: "Your idea", icon: Target },
+      { title: "First view", detail: "What players see", icon: Play },
+      { title: "Action", detail: "What players do", icon: MousePointerClick },
+      { title: "Feedback", detail: "What changes", icon: MessageCircle }
+    ];
 
     return (
-      <section className="idea-studio-screen">
-        <button type="button" className="studio-back-link" onClick={() => project && setActiveStage("milestones")} disabled={!project}>
-          <ArrowLeft size={17} />
-          Back to Milestones
-        </button>
-
-        <div className="studio-title-block">
-          <span className="step-pill">Step 1 of 5</span>
-          <h1>
-            <Wand2 size={28} />
-            Idea Studio
-          </h1>
-          <p>We will turn your idea into a clear game plan.</p>
-          <span className="grade-pill">
-            <BookOpen size={15} />
-            Grade 3
+      <section className="idea-seed-screen">
+        <aside className="idea-side-rail">
+          <span className="project-orb">
+            <Gamepad2 size={38} />
           </span>
-        </div>
-
-        <div className="idea-studio-grid">
-          <section className="idea-entry-panel">
-            <div className="panel-kicker amber">
-              <Lightbulb size={18} />
-              <strong>Start with your idea</strong>
-              <Sparkles size={15} />
-            </div>
-            <h2>What do you want to make?</h2>
-            <p>Tell us your idea in your own words.</p>
-            <label className="idea-textbox">
-              <textarea
-                maxLength={500}
-                value={idea}
-                onChange={(event) => setIdea(event.target.value)}
-                aria-label="Project idea"
-              />
-              <CheckCircle2 size={18} />
-            </label>
-
-            <div className="starter-prompt">
-              <strong>Not sure where to start?</strong>
-              <span>Pick one to help get ideas flowing.</span>
-            </div>
-            <div className="idea-helper-list">
-              {helperChoices.map((choice) => {
-                const Icon = choice.icon;
-                return (
-                  <button
-                    type="button"
-                    key={choice.label}
-                    onClick={() => setIdea(choice.label === "Describe it myself" ? DEFAULT_IDEA : `${DEFAULT_IDEA} I want it to start with ${choice.label.toLowerCase()}.`)}
-                  >
-                    <Icon size={18} />
-                    <span>{choice.label}</span>
-                    <ArrowRight size={16} />
-                  </button>
-                );
-              })}
-            </div>
-            <div className="studio-tip warm">
-              <Lightbulb size={17} />
-              <span>Tip: There is no perfect answer. We can change things later.</span>
-            </div>
-          </section>
-
-          <section className="idea-visual-panel">
-            <div className="panel-kicker blue">
+          <h2>School Quiz Game</h2>
+          <p>A quiz game about my school.</p>
+          <div className="seed-status-card">
+            <small>Current focus</small>
+            <strong>
               <Target size={18} />
-              <div>
-                <strong>Your project idea</strong>
-                <span>Here is how we picture your game.</span>
-              </div>
-            </div>
+              Idea seed
+            </strong>
+          </div>
+          <div className="seed-helper-stack">
+            <strong>Quick starters</strong>
+            {helperChoices.map((choice) => {
+              const Icon = choice.icon;
+              return (
+                <button
+                  type="button"
+                  key={choice.label}
+                  onClick={() => setIdea(choice.label === "Describe it myself" ? DEFAULT_IDEA : `${DEFAULT_IDEA} I want it to start with ${choice.label.toLowerCase()}.`)}
+                >
+                  <Icon size={18} />
+                  <span>{choice.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </aside>
 
-            <div className="quiz-hero-art" aria-label="School quiz game preview">
-              <div className="art-sky">
-                <span className="cloud one" />
-                <span className="cloud two" />
-                <span className="school-roof" />
-                <div className="quiz-title-board">School Quiz</div>
-                <button type="button">Start</button>
-                <div className="sample-question">
-                  <strong>What is the name of our school?</strong>
-                  <span>Lincoln Elementary</span>
-                  <span>Riverside School</span>
-                  <span>Maple Academy</span>
-                </div>
-                <div className="score-badge">
-                  <span>Score</span>
-                  <strong>0</strong>
-                  <Star size={18} />
-                </div>
-              </div>
-            </div>
+        <section className="idea-seed-stage">
+          <div className="idea-seed-title">
+            <span className="step-pill">Step 1 of 5</span>
+            <h1>
+              <Sparkles size={30} />
+              Idea Seed Studio
+            </h1>
+            <p>Start with what you want to make happen. The system trail grows from your answers.</p>
+          </div>
 
-            <div className="players-might-panel">
-              <strong>What players might see and do</strong>
-              <ul>
-                <li>
-                  <Play size={18} />
-                  They click Start on the title screen.
-                </li>
-                <li>
-                  <CircleHelp size={18} />
-                  They see a question and choose an answer.
-                </li>
-                <li>
-                  <Star size={18} />
-                  They earn points and the score is shown.
-                </li>
-              </ul>
+          <section className="idea-seed-hero">
+            <div className="seed-orbit" aria-hidden="true">
+              <span className="seed-ring one" />
+              <span className="seed-ring two" />
+              <span className="seed-dot dot-one" />
+              <span className="seed-dot dot-two" />
+              <span className="seed-dot dot-three" />
+              <Target size={78} />
             </div>
-            <p className="studio-note">
-              <Sparkles size={18} />
-              We will build a plan based on your choices.
-            </p>
+            <label className="idea-seed-input">
+              <span>What do you want to make happen?</span>
+              <textarea maxLength={500} value={idea} onChange={(event) => setIdea(event.target.value)} aria-label="Project idea" />
+              <small>
+                <CheckCircle2 size={16} />
+                Clear enough to start asking.
+              </small>
+            </label>
+            <div className="seed-player-preview">
+              <strong>Players might...</strong>
+              <span><Play size={17} /> open a start screen</span>
+              <span><CircleHelp size={17} /> answer one school question</span>
+              <span><MessageCircle size={17} /> see helpful feedback</span>
+            </div>
           </section>
 
-          <section className="clarify-panel">
-            <div className="panel-kicker violet">
-              <Wand2 size={18} />
-              <div>
-                <strong>Let us make your idea clearer</strong>
-                <span>Choose what feels right. You can change anything later.</span>
-              </div>
-            </div>
-
-            {[
-              {
-                question: "What should someone do first?",
-                options: ["See a title screen", "Go straight to a question", "See how to play"],
-                icon: Play
-              },
-              {
-                question: "What should the game show next?",
-                options: ["A question", "How to play", "A topic choice"],
-                icon: CircleHelp
-              },
-              {
-                question: "What should happen when they click?",
-                options: ["Check the answer", "Go to the next question", "Show the score"],
-                icon: MousePointerClick
-              }
-            ].map((prompt, promptIndex) => {
-              const Icon = prompt.icon;
+          <section className="seed-trail-preview" aria-label="System trail preview">
+            {seedTrail.map((item, index) => {
+              const Icon = item.icon;
               return (
-                <article className="clarify-question" key={prompt.question}>
+                <article key={item.title} className={index === 0 ? "active" : ""}>
+                  <span>{index + 1}</span>
+                  <Icon size={26} />
                   <div>
-                    <span>{promptIndex + 1}</span>
-                    <strong>{prompt.question}</strong>
+                    <strong>{item.title}</strong>
+                    <small>{item.detail}</small>
                   </div>
-                  <div className="clarify-options">
-                    {prompt.options.map((option, optionIndex) => (
-                      <button
-                        className={optionIndex === 0 ? "selected" : ""}
-                        type="button"
-                        key={option}
-                        onClick={() => setIdea(`${DEFAULT_IDEA} ${option}.`)}
-                      >
-                        {option}
-                        {optionIndex === 0 && <Check size={14} />}
-                      </button>
-                    ))}
-                  </div>
-                  <label>
-                    <Icon size={16} />
-                    <input placeholder="Or type your own idea..." aria-label={`${prompt.question} custom answer`} />
-                  </label>
                 </article>
               );
             })}
-
-            <button
-              className="primary-button map-cta"
-              type="button"
-              onClick={canMakeMap ? handleGeneratePath : goalInterview ? () => setActiveStage("flowchart") : handleStartGoalInterview}
-              disabled={isBusy || !idea.trim()}
-            >
-              <Map size={18} />
-              {ideaCtaLabel}
-              <ArrowRight size={18} />
-            </button>
-            <small>
-              <LockIcon />
-              We will create your plan in the next step.
-            </small>
           </section>
-        </div>
 
-        <section className="starter-strip" aria-label="Example project starters">
-          {starterCards.map((card) => {
-            const Icon = card.icon;
+          <section className="starter-strip seed-starters" aria-label="Example project starters">
+            {starterCards.map((card) => {
+              const Icon = card.icon;
+              return (
+                <button className={`starter-mini ${card.tone}`} type="button" key={card.title} onClick={() => setIdea(card.idea)}>
+                  <Icon size={19} />
+                  <span>{card.title}</span>
+                </button>
+              );
+            })}
+          </section>
+        </section>
+
+        <aside className="idea-clarify-rail">
+          <div>
+            <span className="quiet-mark">
+              <Wand2 size={22} />
+            </span>
+            <h2>Shape the first trail</h2>
+            <p>Pick what feels right. Nothing is built yet.</p>
+          </div>
+
+          {[
+            {
+              question: "What should players see first?",
+              options: ["Title screen", "First question", "How to play"],
+              icon: Play
+            },
+            {
+              question: "What should they do next?",
+              options: ["Choose an answer", "Pick a topic", "Read a clue"],
+              icon: MousePointerClick
+            },
+            {
+              question: "What should change after that?",
+              options: ["Show feedback", "Add score", "Next question"],
+              icon: MessageCircle
+            }
+          ].map((prompt, promptIndex) => {
+            const Icon = prompt.icon;
             return (
-              <button className={`starter-mini ${card.tone}`} type="button" key={card.title} onClick={() => setIdea(card.idea)}>
-                <Icon size={19} />
-                <span>{card.title}</span>
-              </button>
+              <article className="seed-question" key={prompt.question}>
+                <div>
+                  <span>{promptIndex + 1}</span>
+                  <strong>{prompt.question}</strong>
+                </div>
+                <div>
+                  {prompt.options.map((option, optionIndex) => (
+                    <button
+                      className={optionIndex === 0 ? "selected" : ""}
+                      type="button"
+                      key={option}
+                      onClick={() => setIdea(`${DEFAULT_IDEA} ${option}.`)}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
+                <label>
+                  <Icon size={16} />
+                  <input placeholder="Or type your own idea..." aria-label={`${prompt.question} custom answer`} />
+                </label>
+              </article>
             );
           })}
-        </section>
+
+          <button
+            className="primary-button seed-map-cta"
+            type="button"
+            onClick={canMakeMap ? handleGeneratePath : goalInterview ? () => setActiveStage("flowchart") : handleStartGoalInterview}
+            disabled={isBusy || !idea.trim()}
+          >
+            <Map size={19} />
+            {ideaCtaLabel}
+            <ArrowRight size={19} />
+          </button>
+          <small>
+            <LockIcon />
+            No code yet. First we make the trail visible.
+          </small>
+        </aside>
       </section>
     );
   }

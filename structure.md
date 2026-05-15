@@ -48,7 +48,7 @@ Level 3: Preview Feedback Loop
 The May 15 design integration reframes the primary surfaces around one hero object per screen:
 
 ```text
-Idea Studio        -> idea seed and visible project preview
+Idea Seed Studio   -> idea seed, orbit visual, and first trail preview
 System Trail       -> curved build trail with completed/current/upcoming tiles
 Milestone Room     -> current step story and My Checks note
 Logic + Preview    -> logic chain and preview stage
@@ -188,7 +188,8 @@ Global visual system for the prototype:
 
 - Grade 3 project studio top app bar
 - mobile-only horizontal stage chips
-- Idea Studio, System Trail Canvas, Milestone Room, Logic + Preview, Mismatch Lens, and System Growth Map surfaces
+- Idea Seed Studio, System Trail Canvas, Milestone Room, Logic + Preview, Mismatch Lens, and System Growth Map surfaces
+- Idea Seed Studio first screen: project side rail, large idea orbit hero, trail preview cards, and right-side first-trail choices
 - System Trail visual language: soft rail background, system tiles, completed/current/upcoming legend, selected step inspector, and next-build panel
 - Milestone Room three-zone layout: project side card, large thinking / preview area, and step guide / Quiet AI rail
 - student-authored checklist workshop with draft rows, AI feedback, and suggested revision
@@ -202,10 +203,10 @@ The CSS is intentionally app-surface oriented rather than landing-page oriented.
 
 Main product workspace. Owns the interactive user flow:
 
-- local `activeStage` state for Idea Studio, Flowchart, Milestone Room, and Preview / Debug
+- local `activeStage` state for Idea Seed Studio, Flowchart, Milestone Room, and Preview / Debug
 - top project studio shell with brand, breadcrumb, saved state, Help, learner avatar, compact More / reset / rollback controls, and mobile stage chips
-- idea input
-- visual project idea preview
+- idea input inside the large Idea Seed hero
+- visual idea orbit and first trail preview
 - starter shortcuts
 - multi-turn goal interview
 - synchronous project path map updates
