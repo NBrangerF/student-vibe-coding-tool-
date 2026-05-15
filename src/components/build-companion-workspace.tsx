@@ -12,9 +12,11 @@ import {
   ChevronDown,
   CircleHelp,
   Code2,
+  Cloud,
   Database,
   Download,
   Eye,
+  ExternalLink,
   Flag,
   Folder,
   Gamepad2,
@@ -27,8 +29,10 @@ import {
   Map,
   MessageCircle,
   Minus,
+  Monitor,
   MoreHorizontal,
   MousePointerClick,
+  Paintbrush,
   Pencil,
   Play,
   Plus,
@@ -40,10 +44,12 @@ import {
   Sparkles,
   Star,
   Target,
+  Trash2,
   Trophy,
   User,
   Wand2,
-  Workflow
+  Workflow,
+  X
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { postJson } from "@/lib/api-client";
@@ -69,6 +75,15 @@ type AppStage = "dashboard" | "flowchart" | "milestones" | "preview";
 type DrawerTab = "changes" | "code" | "console" | "history";
 type ScaffoldStep = "story" | "checklist" | "logic" | "build" | "preview" | "explain";
 type ChecklistCheckStatus = "yes" | "not_yet" | "unsure";
+type TrailItemStatus = Milestone["status"] | "upcoming" | "open" | "known";
+type TrailItem = {
+  id: string;
+  order: number;
+  title: string;
+  detail: string;
+  status: TrailItemStatus;
+  icon: typeof Gamepad2;
+};
 
 const STORAGE_KEY = "student-ai-build-companion-state-v2";
 const DEFAULT_IDEA = "I want to make a quiz game about my school.";
@@ -389,6 +404,10 @@ export function BuildCompanionWorkspace() {
     hasLoadedStoredState
   ]);
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [activeStage, activeScaffoldStep]);
+
   const selectedMilestone = useMemo(
     () => milestones.find((milestone) => milestone.id === selectedMilestoneId) ?? milestones[0],
     [milestones, selectedMilestoneId]
@@ -602,13 +621,18 @@ export function BuildCompanionWorkspace() {
   }
 
   async function handleReviewChecklist() {
-    if (!selectedMilestone || !draftChecklist.trim()) return;
+    if (!selectedMilestone) return;
+    const draftForReview = draftChecklist.trim() || selectedMilestone.doneChecklist.slice(0, 4).join("\n");
+    if (!draftForReview.trim()) return;
     setIsBusy(true);
     setError(null);
     try {
+      if (!draftChecklist.trim()) {
+        setDraftChecklists((items) => ({ ...items, [selectedMilestone.id]: draftForReview }));
+      }
       const feedback = await postJson<ChecklistFeedbackResponse>("/api/checklist/review", {
         milestone: selectedMilestone,
-        draftChecklist
+        draftChecklist: draftForReview
       });
       setChecklistFeedbackByMilestone((items) => ({ ...items, [selectedMilestone.id]: feedback }));
       setActiveScaffoldStep("checklist");
@@ -622,7 +646,7 @@ export function BuildCompanionWorkspace() {
 
   async function handleConfirmChecklist(useImproved = true) {
     if (!selectedMilestone) return;
-    const fallbackItems = parseChecklistText(draftChecklist);
+    const fallbackItems = parseChecklistText(draftChecklist).length ? parseChecklistText(draftChecklist) : selectedMilestone.doneChecklist.slice(0, 4);
     const confirmed = (useImproved && checklistFeedback?.improvedChecklist.length ? checklistFeedback.improvedChecklist : fallbackItems).slice(0, 4);
 
     if (confirmed.length < 2) {
@@ -801,7 +825,8 @@ export function BuildCompanionWorkspace() {
     if (!selectedMilestone) return;
     setMilestones((items) => updateMilestone(items, selectedMilestone.id, { status: "done" }));
     setActiveScaffoldStep("explain");
-    appendAssistantLog("Step marked done. Answer one quick check, then move to the next small step.");
+    setActiveStage("preview");
+    appendAssistantLog("Step marked done. Look at what changed in your system, then choose the next small step.");
   }
 
   function handleMiniExplainAnswer(optionIndex: number) {
@@ -916,6 +941,185 @@ export function BuildCompanionWorkspace() {
           </div>
         )}
       </section>
+    );
+  }
+
+  function milestoneIconForOrder(order?: number) {
+    if (order === 1) return Play;
+    if (order === 2) return CircleHelp;
+    if (order === 3) return MessageCircle;
+    if (order === 4) return Trophy;
+    if (order === 5) return ListChecks;
+    return Workflow;
+  }
+
+  function trailItems(): TrailItem[] {
+    if (milestones.length) {
+      return milestones.map((milestone) => ({
+        id: milestone.id,
+        order: milestone.order,
+        title: milestone.title,
+        detail: grade3Copy(milestone.visibleOutput),
+        status: milestone.status,
+        icon: milestoneIconForOrder(milestone.order)
+      }));
+    }
+
+    const fallback = [
+      { title: "Start screen", detail: "Create the welcome or start screen." },
+      { title: "One question", detail: "Add a question and multiple choices." },
+      { title: "Answer feedback", detail: "Show feedback when a player answers." },
+      { title: "Score", detail: "Keep track of correct answers." },
+      { title: "More questions", detail: "Add new questions to keep the game going." }
+    ];
+
+    return fallback.map((item, index) => ({
+      id: `trail-${index + 1}`,
+      order: index + 1,
+      title: item.title,
+      detail: item.detail,
+      status: index < Math.max(1, pathMap?.confidence ? Math.round(pathMap.confidence * 3) : 1) ? "known" : "open",
+      icon: milestoneIconForOrder(index + 1)
+    }));
+  }
+
+  function currentFocusLabel() {
+    if (activeStage === "preview" && !currentStepIsDone) return "Mismatch Lens";
+    if (activeStage === "preview" && currentStepIsDone) return "Feedback";
+    if (activeScaffoldStep === "logic" || activeScaffoldStep === "build" || activeScaffoldStep === "preview") return "Logic + Preview";
+    return selectedMilestone?.title ?? "Feedback";
+  }
+
+  function renderProjectSideCard(options?: { updated?: boolean }) {
+    const progress = selectedMilestone?.order ?? Math.min(3, Math.max(1, trailItems().filter((item) => item.status === "done" || item.status === "known").length));
+
+    return (
+      <aside className="system-project-card">
+        <span className="project-orb">
+          <Gamepad2 size={38} />
+        </span>
+        <div className="project-name-row">
+          <h2>{projectTitle}</h2>
+          <Pencil size={18} />
+        </div>
+        <p>A quiz game about my school.</p>
+        <hr />
+        <span className="project-field-label">Current focus</span>
+        <div className="focus-chip">
+          <span />
+          {currentFocusLabel()}
+        </div>
+        <div className="progress-row">
+          <span>Progress</span>
+          <strong>{progress} of 5</strong>
+        </div>
+        <div className="project-progress-bar">
+          <i style={{ width: `${Math.min(100, (progress / 5) * 100)}%` }} />
+        </div>
+        <hr />
+        <div className="project-date-row">
+          <CalendarIcon />
+          {options?.updated ? "Updated just now" : "Created today"}
+        </div>
+      </aside>
+    );
+  }
+
+  function CalendarIcon() {
+    return (
+      <span aria-hidden="true" className="calendar-glyph">
+        □
+      </span>
+    );
+  }
+
+  function renderQuietAiCard(message: string, detail?: string, action?: { label: string; onClick: () => void }) {
+    return (
+      <section className="quiet-ai-card">
+        <span>
+          <Sparkles size={24} />
+        </span>
+        <div>
+          <small>Quiet AI</small>
+          <strong>{message}</strong>
+          {detail && <p>{detail}</p>}
+          {action && (
+            <button className="secondary-button compact" type="button" onClick={action.onClick}>
+              {action.label}
+            </button>
+          )}
+        </div>
+      </section>
+    );
+  }
+
+  function renderTrailLegend() {
+    return (
+      <div className="trail-legend" aria-label="Build trail legend">
+        <span>
+          <Check size={16} />
+          Completed
+        </span>
+        <span>
+          <i />
+          Current focus
+        </span>
+        <span>
+          <b />
+          Upcoming
+        </span>
+      </div>
+    );
+  }
+
+  function renderNextBuildPanel(mode: "choose" | "logic" | "debug" | "growth" = "choose") {
+    const future = milestones.length
+      ? milestones.filter((milestone) => milestone.order > (selectedMilestone?.order ?? 0)).slice(0, 3)
+      : [];
+    const defaultOptions = [
+      { title: "First screen", detail: "Create the welcome or start screen.", icon: Play, tone: "teal" },
+      { title: "One question", detail: "Add a question and multiple choices.", icon: CircleHelp, tone: "blue" },
+      { title: "Answer feedback", detail: "Show feedback when a player answers.", icon: MessageCircle, tone: "amber" }
+    ];
+    const options: Array<{ title: string; detail: string; icon: typeof Play; tone: string; milestone?: Milestone }> = future.length
+      ? future.map((milestone) => ({ title: milestone.title, detail: grade3Copy(milestone.visibleOutput), icon: milestoneIconForOrder(milestone.order), tone: milestone.order === 4 ? "blue" : "amber", milestone }))
+      : defaultOptions.map((item) => ({ ...item, milestone: undefined }));
+
+    return (
+      <aside className={`next-build-panel ${mode}`}>
+        <h2>Choose your next build step</h2>
+        <p>{mode === "logic" ? "You're building great. Here is what comes next." : "Pick a starting point. You can change it anytime."}</p>
+        <div className="next-build-list">
+          {options.map((option, index) => {
+            const Icon = option.icon;
+            return (
+              <button
+                className={`next-build-option ${option.tone} ${index === 0 ? "active" : ""}`}
+                type="button"
+                key={option.title}
+                onClick={() => option.milestone ? handleSelectMilestone(option.milestone) : undefined}
+              >
+                <Icon size={30} />
+                <div>
+                  <strong>{option.title}</strong>
+                  <span>{option.detail}</span>
+                </div>
+                <ArrowRight size={22} />
+              </button>
+            );
+          })}
+          {mode === "growth" && (
+            <button className="next-build-option amber" type="button">
+              <Paintbrush size={30} />
+              <div>
+                <strong>Style the game</strong>
+                <span>Pick colors, fonts, and make it yours.</span>
+              </div>
+              <ArrowRight size={22} />
+            </button>
+          )}
+        </div>
+      </aside>
     );
   }
 
@@ -1137,168 +1341,113 @@ export function BuildCompanionWorkspace() {
 
   function renderFlowchart() {
     const canGeneratePath = Boolean(goalInterview?.readiness.canGeneratePath);
-    const visibleFlowNodes = milestones.length
-      ? milestones.map((milestone) => ({
-          id: milestone.id,
-          order: milestone.order,
-          label: milestone.title,
-          detail: grade3Copy(milestone.visibleOutput),
-          status: milestone.status,
-          icon: milestone.order === 1 ? Gamepad2 : milestone.order === 2 ? CircleHelp : milestone.order === 3 ? MessageCircle : milestone.order === 4 ? Trophy : ListChecks
-        }))
-      : (pathMap?.nodes ?? []).map((node, index) => ({
-          id: node.id,
-          order: index + 1,
-          label: node.label,
-          detail: grade3Copy(node.detail),
-          status: node.status,
-          icon: node.type === "goal" ? Target : node.type === "experience" ? Gamepad2 : node.type === "mechanic" ? GitBranch : MessageCircle
-        }));
-    const suggestedIndex = Math.max(
-      0,
-      visibleFlowNodes.findIndex((node) => node.status === "open" || node.status === "in_progress")
-    );
+    const trail = trailItems();
+    const activeOrder = selectedMilestone?.order ?? 3;
+    const activeTrail = trail.find((item) => item.order === activeOrder) ?? trail[2] ?? trail[0];
 
     return (
-      <section className="flow-studio-screen">
-        <aside className="flow-idea-rail">
-          <h2>
-            <Lightbulb size={22} />
-            Your idea
-          </h2>
-          <article>
-            <strong>Your goal</strong>
-            <p>{idea}</p>
-          </article>
-          <article>
-            <strong>System summary</strong>
-            <p>{pathMap?.summary ?? "Players start the game, answer a question, get feedback, and see a score."}</p>
-          </article>
-          <article>
-            <strong>What this flow shows</strong>
-            <ul>
-              <li>The key steps in your game</li>
-              <li>How players move through it</li>
-              <li>Where we can build first</li>
-            </ul>
-          </article>
-          <div className="studio-tip violet-tip">
-            <Sparkles size={18} />
-            <span>You can reorder, rename, and connect steps. Start small and build as you go.</span>
-          </div>
-        </aside>
+      <section className="system-trail-screen">
+        {renderProjectSideCard()}
 
-        <section className="flow-board-panel">
-          <div className="flow-board-header">
+        <section className="system-trail-canvas">
+          <div className="trail-heading">
             <div>
-              <h1>
-                <Workflow size={25} />
-                Project Flowchart
-              </h1>
-              <p>This is the whole system. Each box is a step in your game.</p>
-            </div>
-            <div className="flow-controls">
-              <button type="button" className="secondary-button compact">
-                Fit view
-              </button>
-              <button type="button" className="secondary-button compact" disabled>
-                <Minus size={14} />
-                100%
-                <Plus size={14} />
-              </button>
+              <h1>System Trail Canvas</h1>
+              <p>Your build trail, one step at a time.</p>
             </div>
           </div>
 
-          <div className="vertical-flow-canvas">
-            {visibleFlowNodes.map((node, index) => {
-              const Icon = node.icon;
-              const nodeIsCurrent = index === suggestedIndex || node.status === "in_progress";
+          <div className="trail-canvas-field">
+            <span className="trail-rail rail-one" />
+            <span className="trail-rail rail-two" />
+            <span className="trail-rail rail-three" />
+            {trail.map((item) => {
+              const Icon = item.icon;
+              const isCompleted = item.status === "done" || item.status === "known";
+              const isCurrent = item.order === activeOrder || item.status === "in_progress";
               return (
-                <div className="vertical-flow-item" key={node.id}>
-                  <article className={`vertical-flow-node ${node.status} ${nodeIsCurrent ? "current" : ""}`}>
-                    <span className="node-number">{node.order}</span>
-                    <span className="node-icon">
-                      <Icon size={26} />
-                    </span>
-                    <div>
-                      <strong>{node.label}</strong>
-                      <p>{node.detail}</p>
-                      {nodeIsCurrent && <em>Suggested first small step</em>}
-                    </div>
-                    <MoreHorizontal size={17} />
-                  </article>
-                  {index < visibleFlowNodes.length - 1 && <ArrowDownConnector />}
-                </div>
+                <button
+                  type="button"
+                  className={`system-tile tile-${item.order} ${isCompleted ? "completed" : ""} ${isCurrent ? "current" : ""}`}
+                  key={item.id}
+                  onClick={() => {
+                    const milestone = milestones.find((candidate) => candidate.order === item.order);
+                    if (milestone) handleSelectMilestone(milestone);
+                  }}
+                >
+                  {isCurrent && <span className="focus-pin" />}
+                  <span className="tile-number">{item.order}</span>
+                  <Icon size={42} />
+                  <strong>{item.title}</strong>
+                  <small>{isCompleted ? <Check size={18} /> : isCurrent ? "Current" : "Upcoming"}</small>
+                </button>
               );
             })}
-            {!visibleFlowNodes.length && (
-              <article className="vertical-flow-node open current">
-                <span className="node-number">?</span>
-                <span className="node-icon">
-                  <Sparkles size={26} />
-                </span>
-                <div>
-                  <strong>Unknown first step</strong>
-                  <p>Answer one question so the map can begin.</p>
-                </div>
-              </article>
+
+            {project && activeTrail && (
+              <div className="trail-floating-ai">
+                {renderQuietAiCard("This step may be too big.", "Want to split it?", {
+                  label: "Review step",
+                  onClick: () => setActiveScaffoldStep("story")
+                })}
+              </div>
             )}
           </div>
 
-          <div className="flow-board-footer">
-            <button className="secondary-button compact" type="button" disabled>
-              <Plus size={16} />
-              Add step
-            </button>
-            <span>Drag steps to reorder · Click a step to edit · Connectors show the system</span>
-            <div>
-              <button type="button" className="icon-button" disabled>
-                <RotateCcw size={16} />
-              </button>
-              <button type="button" className="icon-button" disabled>
-                <ArrowRight size={16} />
-              </button>
-            </div>
-          </div>
+          {renderTrailLegend()}
         </section>
 
-        <aside className="path-choice-rail">
-          <section className="path-card">
-            <h2>
-              <Sparkles size={22} />
-              Choose a path
-            </h2>
-            <p>Pick a recommended path, or create your own.</p>
-            {[
-              { title: "Build a playable version first", detail: "Get a minimal game working fast and playable early.", accent: "amber", numbers: [1, 2, 3, 4, 5] },
-              { title: "Design the start screen first", detail: "Create a great first impression before the core gameplay.", accent: "teal", numbers: [1, 3, 2, 4, 5] },
-              { title: "Build the core interaction first", detail: "Focus on the question and feedback loop first.", accent: "violet", numbers: [1, 2, 3, 5, 4] }
-            ].map((option, index) => (
-              <button className={`path-option ${option.accent} ${index === 0 ? "selected" : ""}`} type="button" key={option.title}>
-                <span className="path-number-row">
-                  {option.numbers.map((number) => (
-                    <i key={number}>{number}</i>
-                  ))}
-                </span>
-                <strong>{option.title}</strong>
-                <p>{option.detail}</p>
-                {index === 0 && <em>Recommended</em>}
-              </button>
-            ))}
-            <button className="secondary-button mix-path" type="button" disabled>
-              <GitBranch size={18} />
-              Mix my own path
+        {project && activeTrail ? (
+          <aside className="selected-step-panel">
+            <button className="panel-close" type="button" onClick={() => setActiveStage("milestones")}>
+              <X size={20} />
             </button>
-          </section>
-
-          <section className="question-card flow-question-card">
-            <div className="card-title">
-              <Sparkles size={18} />
-              <h2>{goalInterview?.readiness.canGeneratePath ? "Ready to build small" : "AI asks one question"}</h2>
+            <div className="selected-step-title">
+              <span>{activeTrail.order}</span>
+              <h2>{activeTrail.title}</h2>
             </div>
+            <p>{activeTrail.detail}</p>
+            <hr />
+            <section>
+              <span className="thought-icon">
+                <Lightbulb size={22} />
+              </span>
+              <div>
+                <h3>Why it matters</h3>
+                <p>Feedback helps players learn and stay engaged. A clear explanation turns a simple answer into real understanding.</p>
+              </div>
+            </section>
+            <hr />
+            <h3>What this step includes</h3>
+            <ul>
+              <li>Check if the player's answer is correct</li>
+              <li>Show correct answer and explanation</li>
+              <li>Celebrate correct answers with feedback</li>
+            </ul>
+            <button className="trail-primary-action" type="button" onClick={() => setActiveStage("milestones")}>
+              <Sparkles size={18} />
+              Build this next
+              <ArrowRight size={18} />
+            </button>
+            <button className="trail-secondary-action" type="button">
+              <GitBranch size={18} />
+              Split into smaller steps
+            </button>
+            <button className="trail-secondary-action quiet" type="button">
+              <Sparkles size={18} />
+              Ask AI why
+            </button>
+            <button className="trail-learn-link" type="button">
+              Learn more about this step
+              <ExternalLink size={15} />
+            </button>
+          </aside>
+        ) : (
+          <aside className="trail-question-panel">
+            <h2>{goalInterview?.readiness.canGeneratePath ? "Choose your next build step" : "Build your trail"}</h2>
+            <p>{goalInterview?.readiness.canGeneratePath ? "You have enough choices to create the first bounded milestone." : "Answer one question. The trail grows only when the idea is clearer."}</p>
             {!goalInterview ? (
               <>
-                <p>Start with one small question. The map will grow as you answer.</p>
                 <button className="primary-button" type="button" onClick={handleStartGoalInterview} disabled={isBusy}>
                   Start asking
                 </button>
@@ -1331,15 +1480,16 @@ export function BuildCompanionWorkspace() {
                 </button>
               </div>
             ) : (
-              <p>We have enough choices to start one small step.</p>
+              <p>Ready. Make the trail and choose the first small step.</p>
             )}
             <button className="primary-button" type="button" onClick={handleGeneratePath} disabled={isBusy || !canGeneratePath}>
-              Choose this as my next milestone
+              Make my system trail
               <ArrowRight size={16} />
             </button>
             {!canGeneratePath && goalInterview && <small>{Math.max(0, goalInterview.readiness.requiredCount - goalInterview.readiness.answeredCount)} more answer(s) before we build.</small>}
-          </section>
-        </aside>
+            {renderQuietAiCard("Small steps help your project grow.", "You're doing great. Keep building.")}
+          </aside>
+        )}
       </section>
     );
   }
@@ -1537,461 +1687,431 @@ export function BuildCompanionWorkspace() {
     );
   }
 
-  function renderMilestones() {
-    const beforeAfter = beforeAfterForMilestone(selectedMilestone);
-    const canBuild = Boolean(milestonePlan && currentChecklist.length && predictionAnswer !== null);
+  function renderMilestoneGuide(activeIndex: number) {
+    const guide = [
+      ["Milestone story", "Why this step matters."],
+      ["My checks", "Plan the checks."],
+      ["See the logic", "How your checks work."],
+      ["Build and try", "Put it together."],
+      ["Check preview", "What will players see?"],
+      ["What changed", "Your step summary."]
+    ];
 
     return (
-      <section className="stage-view milestone-room">
-        <div className="project-topline">
-          <button type="button" className="back-button" onClick={() => setActiveStage("flowchart")}>
-            <ArrowLeft size={17} />
-            Map
-          </button>
-          <div className="project-title-block">
-            <span className="project-avatar">
-              <Gamepad2 size={24} />
-            </span>
-            <div>
-              <h1>{projectTitle}</h1>
-              <p>Goal: {project?.originalIdea ?? idea}</p>
-            </div>
-            <em>In progress</em>
-          </div>
-          <div className="stage-actions">
-            <button className="primary-button compact" type="button" onClick={handleRunPreview} disabled={!project || isBusy}>
-              <Play size={16} />
-              Run preview
+      <aside className="milestone-guide-panel">
+        <h2>Milestone Room</h2>
+        <p>{activeIndex <= 2 ? "Make your checklist." : activeIndex <= 4 ? "Build and test this step." : "Review your system growth."}</p>
+        <div className="milestone-guide-list">
+          {guide.map(([title, detail], index) => (
+            <button
+              className={activeIndex === index + 1 ? "active" : ""}
+              type="button"
+              key={title}
+              onClick={() => {
+                const nextStep: ScaffoldStep = index < 1 ? "story" : index === 1 ? "checklist" : index === 2 ? "logic" : index === 3 ? "build" : index === 4 ? "preview" : "explain";
+                setActiveScaffoldStep(nextStep);
+              }}
+            >
+              <span>{index + 1}</span>
+              <div>
+                <strong>{title}</strong>
+                <small>{detail}</small>
+              </div>
             </button>
-            <button className="icon-button" type="button" onClick={() => setDrawerOpen((open) => !open)} title="More">
-              <MoreHorizontal size={18} />
-            </button>
+          ))}
+        </div>
+        <div className="guide-tip">
+          <Lightbulb size={20} />
+          <div>
+            <strong>Tip</strong>
+            <p>Good checks make clear steps your game can follow.</p>
           </div>
         </div>
+      </aside>
+    );
+  }
 
-        <div className="milestone-room-grid">
-          <aside className="room-map">
-            <section className="panel">
-              <div className="panel-header">
-                <h2>Project map</h2>
-                <button type="button" className="mini-button" onClick={() => setActiveStage("flowchart")}>
-                  Expand
-                </button>
-              </div>
-              <div className="project-flow-list">
-                {milestones.map((milestone) => (
-                  <button
-                    className={`project-flow-row ${milestone.id === selectedMilestoneId ? "active" : ""} ${milestone.status}`}
-                    type="button"
-                    key={milestone.id}
-                    onClick={() => handleSelectMilestone(milestone)}
-                  >
-                    <span>{milestone.status === "done" ? <Check size={15} /> : milestone.order}</span>
-                    <strong>{milestone.title}</strong>
-                    {milestone.id === selectedMilestoneId && <em>Current</em>}
-                  </button>
-                ))}
-              </div>
-            </section>
+  function renderChecksStage() {
+    const beforeAfter = beforeAfterForMilestone(selectedMilestone);
+    const draftItems = parseChecklistText(draftChecklist);
+    const displayChecks = draftItems.length
+      ? draftItems
+      : currentChecklist.length
+        ? currentChecklist
+        : [
+            "When the player clicks an answer, check if it is the right answer",
+            "If the answer is correct, show Correct!",
+            "If the answer is wrong, show Try again."
+          ];
 
-            <section className="panel bounded-card">
-              <div className="card-title">
-                <Flag size={18} />
-                <h2>Current small step</h2>
-              </div>
-              {selectedMilestone ? (
-                <>
-                  <strong>{selectedMilestone.title}</strong>
-                  <p>{grade3Copy(selectedMilestone.visibleOutput)}</p>
-                  <small>Small step · about 15-25 min</small>
-                  <button className="primary-button" type="button" onClick={() => setActiveScaffoldStep("checklist")} disabled={isBusy}>
-                    <ListChecks size={16} />
-                    Write my checklist
-                  </button>
-                </>
-              ) : (
-                <p>No milestone selected.</p>
-              )}
-            </section>
+    function updateDraftItem(index: number, value: string) {
+      if (!selectedMilestone) return;
+      const next = [...displayChecks];
+      next[index] = value;
+      setDraftChecklists((items) => ({ ...items, [selectedMilestone.id]: next.join("\n") }));
+    }
 
-            <section className="panel cue-panel">
-              <div className="panel-header">
-                <h2>Visual cues</h2>
-              </div>
-              <div className="cue-grid">
-                {visualCues.map((cue) => {
-                  const Icon = cue.icon;
-                  return (
-                    <div className="cue-chip" key={cue.label}>
-                      <Icon size={15} />
-                      <span>{cue.label}</span>
-                      <small>{cue.detail}</small>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          </aside>
+    return (
+      <section className="milestone-focus-screen checks-screen">
+        {renderProjectSideCard()}
+        <section className="milestone-focus-main">
+          <header className="focus-heading">
+            <h1>This step: {selectedMilestone?.title ?? "Answer feedback"}</h1>
+            <p>{selectedMilestone ? grade3Copy(selectedMilestone.visibleOutput) : "Let's plan what should happen in one small step."}</p>
+          </header>
 
-          <section className="room-preview">
-            <section className="panel milestone-story-card">
-              <div>
-                <span className="room-kicker">Milestone story</span>
-                <h2>{selectedMilestone ? `You are making: ${selectedMilestone.title}` : "Pick a small step"}</h2>
-                <p>{selectedMilestone ? grade3Copy(selectedMilestone.visibleOutput) : "Choose one project step to begin."}</p>
-              </div>
-              <div className="before-after-grid">
-                <div>
-                  <strong>Before</strong>
-                  <p>{beforeAfter.before}</p>
-                </div>
-                <ArrowRight size={18} />
-                <div>
-                  <strong>After</strong>
-                  <p>{beforeAfter.after}</p>
-                </div>
-              </div>
-            </section>
-
-            {activeScaffoldStep === "checklist" && renderChecklistWorkshop()}
-            {(activeScaffoldStep === "logic" || activeScaffoldStep === "build") && renderCenterLogicMap()}
-
-            <div className="panel preview-panel room-preview-panel">
-              <div className="panel-header">
-                <div>
-                  <h2>Preview</h2>
-                  <span className={`run-status ${previewState.status}`}>{previewState.status}</span>
-                </div>
-                <div className="preview-device-tabs">
-                  <button className="active" type="button">
-                    <Eye size={16} />
-                  </button>
-                  <button type="button" disabled>
-                    <Layers3 size={16} />
-                  </button>
-                </div>
-              </div>
-              <div className="preview-surface">
-                <P5Preview code={code} runKey={runKey} onConsole={handleConsole} onError={handlePreviewError} />
-              </div>
-              <div className="preview-actions-row">
-                <span>{previewState.error ? previewState.error : `${previewState.runCount} run(s), ${previewState.console.length} message(s)`}</span>
-                <button className="secondary-button compact" type="button" onClick={handleRunPreview} disabled={isBusy}>
-                  <Play size={15} />
-                  Run
-                </button>
-                <button className="secondary-button compact" type="button" onClick={() => setRunKey((key) => key + 1)}>
-                  <RefreshCcw size={15} />
-                  Restart
-                </button>
-              </div>
+          <section className="before-after-hero">
+            <div>
+              <span>Before</span>
+              <p>{beforeAfter.before}</p>
+              <i className="ghost-action" />
             </div>
-
-            <section className="panel observe-panel">
-              <div className="panel-header">
-                <h2>Expected vs observed</h2>
-                <button className="mini-button" type="button" onClick={() => setActiveStage("preview")}>
-                  Debug view
-                </button>
-              </div>
-              <div className="observation-strip">
-                <div>
-                  <strong>Expected</strong>
-                  <p>{grade3Copy(firstUncheckedChecklistItem || selectedMilestone?.visibleOutput || "This step works in the preview.")}</p>
+            <ArrowRight size={34} />
+            <div>
+              <span>After</span>
+              <p>{beforeAfter.after}</p>
+              {selectedMilestone?.order === 1 ? (
+                <div className="feedback-sample title-sample">
+                  <b><Play size={16} /> Start</b>
                 </div>
-                <div>
-                  <strong>Observed</strong>
-                  <textarea value={debugSymptom} onChange={(event) => setDebugSymptom(event.target.value)} aria-label="Observed behavior" />
+              ) : (
+                <div className="feedback-sample">
+                  <b><Check size={16} /> Correct!</b>
+                  <b className="try"><X size={16} /> Try again.</b>
                 </div>
-              </div>
-            </section>
-
-            <section className="panel system-map-panel">
-              <div className="panel-header">
-                <h2>System map update</h2>
-                <span className="muted">How this step connects</span>
-              </div>
-              <div className="system-card-row">
-                {currentSystemCards.map((card, index) => {
-                  const Icon = card.icon;
-                  return (
-                    <div className={`system-card ${card.kind}`} key={card.title}>
-                      <Icon size={17} />
-                      <strong>{card.title}</strong>
-                      <p>{card.detail}</p>
-                      {index < currentSystemCards.length - 1 && <ArrowRight className="system-arrow" size={16} />}
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-
-            {renderToolDrawer()}
+              )}
+            </div>
           </section>
 
-          <aside className="scaffold-panel">
-            <section className="panel scaffold-card">
-              <div className="card-title">
-                <Sparkles size={18} />
-                <h2>Scaffold panel</h2>
+          <section className="my-checks-note">
+            <div className="checks-note-header">
+              <span>
+                <Check size={26} />
+              </span>
+              <div>
+                <h2>My checks</h2>
+                <p>Write the checks your game needs to do in this step.</p>
               </div>
+              <strong>{displayChecks.length} of {Math.max(3, displayChecks.length)}</strong>
+            </div>
+            <div className="checks-note-list">
+              {displayChecks.map((item, index) => (
+                <div className="check-note-row" key={`${item}-${index}`}>
+                  <span className="drag-dots">⋮⋮</span>
+                  <b>{index + 1}</b>
+                  <input value={item} onChange={(event) => updateDraftItem(index, event.target.value)} aria-label={`My check ${index + 1}`} />
+                  <button type="button" onClick={() => updateDraftItem(index, "")} aria-label="Clear check">
+                    <Trash2 size={18} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
 
-              <div className="scaffold-steps">
-                {scaffoldSteps.map((step) => {
-                  const isActive = activeScaffoldStep === step.id;
-                  return (
-                    <section className={`scaffold-step ${isActive ? "active" : ""}`} key={step.id}>
-                      <button type="button" onClick={() => setActiveScaffoldStep(step.id)}>
-                        <span>{scaffoldSteps.findIndex((item) => item.id === step.id) + 1}</span>
-                        <div>
-                          <strong>{step.title}</strong>
-                          <small>{step.hint}</small>
-                        </div>
-                      </button>
+          <section className="checks-ai-row">
+            {renderQuietAiCard(
+              checklistFeedback ? checklistFeedback.assistantMessage : "Nice start. One check may be missing.",
+              checklistFeedback ? "Choose whether to use the clearer checklist, edit it, or keep yours." : "What happens if the answer is wrong?",
+              { label: checklistFeedback ? "Use suggestion" : "Show example", onClick: checklistFeedback ? () => handleConfirmChecklist(true) : handleReviewChecklist }
+            )}
+          </section>
 
-                      {isActive && step.id === "story" && (
-                        <div className="scaffold-body">
-                          <p>{selectedMilestone ? `Next, make only this happen: ${grade3Copy(selectedMilestone.visibleOutput)}` : "Pick a step from the project map."}</p>
-                          <button className="secondary-button compact" type="button" onClick={() => setActiveScaffoldStep("checklist")} disabled={!selectedMilestone}>
-                            Write checklist <ArrowRight size={14} />
-                          </button>
-                        </div>
-                      )}
-
-                      {isActive && step.id === "checklist" && (
-                        <div className="scaffold-body">
-                          <strong>What should happen when this step is done?</strong>
-                          <p>Write 2-4 things you can see or test.</p>
-                          <div className="starter-chips">
-                            {sentenceStarters.map((starter) => (
-                              <button
-                                type="button"
-                                key={starter}
-                                onClick={() =>
-                                  selectedMilestone &&
-                                  setDraftChecklists((items) => ({
-                                    ...items,
-                                    [selectedMilestone.id]: `${draftChecklist}${draftChecklist ? "\n" : ""}${starter}`
-                                  }))
-                                }
-                              >
-                                {starter}
-                              </button>
-                            ))}
-                          </div>
-                          <textarea
-                            value={draftChecklist}
-                            placeholder={"I can click an answer.\nThe game says Correct if the answer is right."}
-                            onChange={(event) =>
-                              selectedMilestone &&
-                              setDraftChecklists((items) => ({
-                                ...items,
-                                [selectedMilestone.id]: event.target.value
-                              }))
-                            }
-                            aria-label="Student checklist draft"
-                          />
-                          <button className="primary-button compact" type="button" onClick={handleReviewChecklist} disabled={!selectedMilestone || !draftChecklist.trim() || isBusy}>
-                            <Sparkles size={15} />
-                            Ask AI for feedback
-                          </button>
-
-                          {checklistFeedback && (
-                            <div className="checklist-feedback">
-                              {checklistFeedback.goodAndCheckable.length > 0 && (
-                                <div className="feedback-group good">
-                                  <strong>Good and checkable</strong>
-                                  {checklistFeedback.goodAndCheckable.map((item) => (
-                                    <p key={item.text}>{item.text}</p>
-                                  ))}
-                                </div>
-                              )}
-                              {checklistFeedback.tooVague.length > 0 && (
-                                <div className="feedback-group vague">
-                                  <strong>Too vague</strong>
-                                  {checklistFeedback.tooVague.map((item) => (
-                                    <p key={item.text}>{item.text}: {item.reason}</p>
-                                  ))}
-                                </div>
-                              )}
-                              {checklistFeedback.missingStep.length > 0 && (
-                                <div className="feedback-group missing">
-                                  <strong>Missing step</strong>
-                                  {checklistFeedback.missingStep.map((item) => (
-                                    <p key={item.text}>{item.text}</p>
-                                  ))}
-                                </div>
-                              )}
-                              <div className="clearer-checklist">
-                                <strong>Clearer checklist</strong>
-                                {checklistFeedback.improvedChecklist.map((item) => (
-                                  <span key={item}>□ {grade3Copy(item)}</span>
-                                ))}
-                              </div>
-                              <div className="button-row">
-                                <button className="primary-button compact" type="button" onClick={() => handleConfirmChecklist(true)} disabled={isBusy}>
-                                  Use this checklist
-                                </button>
-                                <button className="secondary-button compact" type="button" onClick={() => handleConfirmChecklist(false)} disabled={isBusy}>
-                                  Use mine
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {isActive && step.id === "logic" && (
-                        <div className="scaffold-body">
-                          {!milestonePlan ? (
-                            <>
-                              <p>Confirm your checklist first, then AI will make a small logic map.</p>
-                              <button className="secondary-button compact" type="button" onClick={handlePlanMilestone} disabled={!currentChecklist.length || isBusy}>
-                                Create logic map
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <div className="logic-sketch">
-                                {milestonePlan.logicSketch.map((logicStep, index) => (
-                                  <div className="logic-step" key={`${logicStep}-${index}`}>
-                                    <span>{index + 1}</span>
-                                    <p>{grade3Copy(logicStep)}</p>
-                                  </div>
-                                ))}
-                              </div>
-                              <div className="question-block">
-                                <strong>{milestonePlan.predictionQuestion.prompt}</strong>
-                                <div className="option-list">
-                                  {milestonePlan.predictionQuestion.options.map((option, index) => (
-                                    <button
-                                      className={`choice-button ${predictionAnswer === index ? "selected" : ""}`}
-                                      key={option}
-                                      type="button"
-                                      onClick={() => setPredictionAnswer(index)}
-                                    >
-                                      {grade3Copy(option)}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                              <button className="secondary-button compact" type="button" onClick={() => setActiveScaffoldStep("build")}>
-                                Build next <ArrowRight size={14} />
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      )}
-
-                      {isActive && step.id === "build" && (
-                        <div className="scaffold-body">
-                          <p>AI will make one small change for this checklist only.</p>
-                          <button className="primary-button" type="button" onClick={handleApplyPatch} disabled={isBusy || !canBuild}>
-                            <Wand2 size={16} />
-                            Make this change
-                          </button>
-                          {predictionAnswer === null && <small>Answer the quick logic question first.</small>}
-                        </div>
-                      )}
-
-                      {isActive && step.id === "preview" && (
-                        <div className="scaffold-body">
-                          <div className="panel-header">
-                            <strong>Did this happen?</strong>
-                            <span>{completedChecklistCount} / {currentChecklist.length || 0}</span>
-                          </div>
-                          {currentChecklist.length === 0 ? (
-                            <p>Confirm your checklist before checking the preview.</p>
-                          ) : (
-                            <div className="checklist-monitor">
-                              {currentChecklist.map((item) => (
-                                <div className="monitor-row" key={item}>
-                                  <p>{grade3Copy(item)}</p>
-                                  <div>
-                                    {(["yes", "not_yet", "unsure"] as ChecklistCheckStatus[]).map((status) => (
-                                      <button
-                                        className={currentChecklistChecks[item] === status ? "selected" : ""}
-                                        type="button"
-                                        key={status}
-                                        onClick={() => handleChecklistStatus(item, status)}
-                                      >
-                                        {status === "yes" ? "Yes" : status === "not_yet" ? "Not yet" : "Not sure"}
-                                      </button>
-                                    ))}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          <div className="button-row">
-                            <button className="secondary-button compact" type="button" onClick={handleDiagnoseDebug} disabled={!selectedMilestone || isBusy}>
-                              <Bug size={15} />
-                              Ask AI about what I saw
-                            </button>
-                            <button className="primary-button compact" type="button" disabled={!allChecklistDone} onClick={handleCompleteMilestone}>
-                              <Check size={15} />
-                              This step works
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                      {isActive && step.id === "explain" && (
-                        <div className="scaffold-body">
-                          {miniExplain ? (
-                            <>
-                              <strong>{miniExplain.prompt}</strong>
-                              <div className="option-list">
-                                {miniExplain.options.map((option, index) => (
-                                  <button
-                                    className={`choice-button ${miniExplainAnswer === index ? "selected" : ""}`}
-                                    key={option}
-                                    type="button"
-                                    onClick={() => handleMiniExplainAnswer(index)}
-                                  >
-                                    {grade3Copy(option)}
-                                  </button>
-                                ))}
-                              </div>
-                              <button className="secondary-button compact" type="button" onClick={handleSelectNextMilestone} disabled={miniExplainAnswer === null && !currentStepIsDone}>
-                                Next small step <ArrowRight size={14} />
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <p>After you build and check the preview, AI will ask one tiny why question.</p>
-                              <button className="secondary-button compact" type="button" onClick={handleSelectNextMilestone} disabled={!currentStepIsDone || !nextMilestone}>
-                                Choose next step
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      )}
-                    </section>
-                  );
-                })}
-              </div>
-            </section>
-
-            <section className="panel ai-support">
-              <h2>Ask for help</h2>
-              <p>Use this when what you see does not match your checklist.</p>
-              <button className="secondary-button" type="button" onClick={() => setActiveStage("preview")} disabled={!project}>
-                <Bug size={16} />
-                Open debug room
-              </button>
-              <button className="secondary-button" type="button" onClick={handleSelectNextMilestone} disabled={!currentStepIsDone || !nextMilestone}>
-                <ArrowRight size={16} />
-                Pick next step
-              </button>
-            </section>
-          </aside>
-        </div>
+          <div className="focus-action-row">
+            <button
+              className="secondary-button add-check-button"
+              type="button"
+              onClick={() =>
+                selectedMilestone &&
+                setDraftChecklists((items) => ({
+                  ...items,
+                  [selectedMilestone.id]: `${draftChecklist || displayChecks.join("\n")}\nI can see...`
+                }))
+              }
+            >
+              <Plus size={18} />
+              Add this check
+            </button>
+            <button
+              className="primary-button continue-button"
+              type="button"
+              disabled={isBusy || displayChecks.length < 2}
+              onClick={() => {
+                if (currentChecklist.length) {
+                  setActiveScaffoldStep("logic");
+                } else if (checklistFeedback) {
+                  void handleConfirmChecklist(true);
+                } else {
+                  void handleReviewChecklist();
+                }
+              }}
+            >
+              Continue
+              <ArrowRight size={22} />
+            </button>
+          </div>
+        </section>
+        {renderMilestoneGuide(2)}
       </section>
     );
   }
 
+  function renderLogicPreviewStage() {
+    const fallbackChain =
+      !selectedMilestone || selectedMilestone.order <= 1
+        ? [
+            { kind: "goal", title: "Show title", detail: "Players can see what the game is.", icon: Target },
+            { kind: "output", title: "Show Start", detail: "A clear button tells players how to begin.", icon: Play },
+            { kind: "state", title: "Player knows the start", detail: "The first screen feels ready.", icon: User }
+          ]
+        : [
+            { kind: "action", title: "Click answer", detail: "Player selects an answer option.", icon: MousePointerClick },
+            { kind: "decision", title: "Check if right", detail: "Game checks if the answer is correct.", icon: Check },
+            { kind: "feedback", title: "Show message", detail: "Display feedback for the player.", icon: MessageCircle },
+            { kind: "state", title: "Player knows what happened", detail: "Player understands the result.", icon: User }
+          ];
+    const chain = currentSystemCards.length >= 3 ? currentSystemCards : fallbackChain;
+
+    return (
+      <section className="milestone-focus-screen logic-preview-screen">
+        {renderProjectSideCard()}
+        <section className="milestone-focus-main">
+          <header className="focus-heading">
+            <h1>Logic + Preview Stage</h1>
+            <p>See how your game logic works and preview the experience.</p>
+          </header>
+
+          <section className="logic-chain-hero">
+            <h2>Logic Chain</h2>
+            <div className="logic-chain-row">
+              {chain.slice(0, 4).map((card, index) => {
+                const Icon = card.icon;
+                return (
+                  <article className={`logic-chain-card chain-${index + 1}`} key={card.title}>
+                    <span>{index + 1}</span>
+                    <Icon size={44} />
+                    <strong>{card.title}</strong>
+                    <p>{card.detail}</p>
+                    {index < Math.min(4, chain.length) - 1 && <i />}
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="preview-stage-card">
+            <div className="preview-stage-main">
+              <div className="preview-stage-title">
+                <h2>Preview Stage</h2>
+                <span>
+                  <i />
+                  Live preview
+                </span>
+              </div>
+              <div className="preview-stage-frame">
+                <P5Preview code={code} runKey={runKey} onConsole={handleConsole} onError={handlePreviewError} />
+              </div>
+            </div>
+            <aside className="logic-checklist-card">
+              <h3>Logic checklist</h3>
+              {(currentChecklist.length ? currentChecklist : ["Answer selection", "Correctness check", "Feedback shown"]).slice(0, 4).map((item) => (
+                <div key={item}>
+                  <Check size={18} />
+                  <span>
+                    <strong>{grade3Copy(item)}</strong>
+                    <small>Player can test this in the preview.</small>
+                  </span>
+                </div>
+              ))}
+              <button
+                className="primary-button"
+                type="button"
+                disabled={isBusy || !currentChecklist.length}
+                onClick={() => {
+                  if (!milestonePlan) {
+                    void handlePlanMilestone();
+                  } else if (predictionAnswer === null) {
+                    setPredictionAnswer(milestonePlan.predictionQuestion.correctIndex);
+                  } else {
+                    void handleApplyPatch();
+                  }
+                }}
+              >
+                <Play size={18} />
+                Run and check
+              </button>
+            </aside>
+          </section>
+
+        </section>
+        <aside className="logic-right-rail">
+          {renderNextBuildPanel("logic")}
+          {renderQuietAiCard("Here's the heart of your game.", "When a player clicks an answer, we check it, show feedback, and the player knows what happened.")}
+        </aside>
+      </section>
+    );
+  }
+
+  function renderMismatchLens() {
+    return (
+      <section className="milestone-focus-screen mismatch-screen">
+        {renderProjectSideCard()}
+        <section className="milestone-focus-main">
+          <header className="focus-heading">
+            <h1>Mismatch Lens / Preview Debug</h1>
+            <p>Compare what you expected vs. what actually happened.</p>
+          </header>
+
+          <section className="mismatch-lens-card">
+            <div className="wanted-panel">
+              <span><Check size={22} /></span>
+              <h2>I wanted</h2>
+              <p>When I click a correct answer, the game shows “Correct!”</p>
+              <div className="wanted-visual">
+                <strong>Correct!</strong>
+                <small>Great job!</small>
+                <Check size={28} />
+              </div>
+            </div>
+            <div className="lens-icon">
+              <Eye size={42} />
+            </div>
+            <div className="saw-panel">
+              <span><Sparkles size={22} /></span>
+              <h2>I saw</h2>
+              <textarea value={debugSymptom} onChange={(event) => setDebugSymptom(event.target.value)} aria-label="Observed mismatch" />
+              <div className="saw-visual">
+                <strong>What is the capital of France?</strong>
+                <span>Berlin</span>
+                <span>Madrid</span>
+                <span>Paris</span>
+              </div>
+            </div>
+          </section>
+
+          <section className="missing-check-card">
+            <div>
+              <span>!</span>
+              <div>
+                <h2>The missing check</h2>
+                <p>{grade3Copy(failedChecklistItem || firstUncheckedChecklistItem || "The game needs to show feedback when the player selects a correct answer.")}</p>
+              </div>
+            </div>
+            <div className="missing-step-chain">
+              {["Is answer correct?", "Show “Correct!” message", "Add points", "Go to next question"].map((item, index) => (
+                <button className={index === 1 ? "active" : ""} type="button" key={item}>
+                  {index === 0 ? <Check size={16} /> : <span />}
+                  {item}
+                  <ArrowRight size={15} />
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="debug-preview-row">
+            <div className="preview-stage-label">
+              <Monitor size={24} />
+              <h2>Preview stage</h2>
+              <p>This is what your game looks like right now.</p>
+            </div>
+            <div className="debug-preview-frame">
+              <P5Preview code={code} runKey={runKey} onConsole={handleConsole} onError={handlePreviewError} />
+            </div>
+            <aside className="try-fix-card">
+              <Lightbulb size={22} />
+              <h2>Try this fix</h2>
+              <p>{debugDiagnosis?.fixSummary ?? "Add a message step that shows “Correct!” when the answer is right."}</p>
+              <button className="primary-button" type="button" onClick={debugDiagnosis ? handleApplyPatch : handleDiagnoseDebug} disabled={isBusy || !selectedMilestone}>
+                <Sparkles size={16} />
+                Add message step
+              </button>
+              <button className="link-button" type="button">Show me how</button>
+            </aside>
+          </section>
+
+        </section>
+        <aside className="logic-right-rail">
+          {renderNextBuildPanel("debug")}
+          {renderQuietAiCard("The message step may be missing.", "Add feedback so players know they're correct.")}
+        </aside>
+      </section>
+    );
+  }
+
+  function renderSystemGrowthMap() {
+    const chain = [
+      { title: "Player clicks answer", icon: MousePointerClick },
+      { title: "Game checks answer", icon: ListChecks },
+      { title: "Feedback appears", icon: MessageCircle },
+      { title: "Player knows what happened", icon: User }
+    ];
+
+    return (
+      <section className="milestone-focus-screen growth-screen">
+        {renderProjectSideCard({ updated: true })}
+        <section className="milestone-focus-main">
+          <header className="focus-heading">
+            <h1>System Growth Map / What changed?</h1>
+            <p>Your system grew. This step added a feedback loop.</p>
+          </header>
+
+          <section className="growth-map-card">
+            <span className="growth-loop-line" />
+            {chain.map((item, index) => {
+              const Icon = item.icon;
+              return (
+                <article className={`growth-node ${index === 2 ? "new" : ""}`} key={item.title}>
+                  {index === 2 && <em>New</em>}
+                  <span>{index + 1}</span>
+                  <Icon size={44} />
+                  <strong>{item.title}</strong>
+                  {index < chain.length - 1 && <i />}
+                  <Check size={22} />
+                </article>
+              );
+            })}
+          </section>
+
+          <section className="growth-summary-card">
+            <span>
+              <Sparkles size={30} />
+            </span>
+            <div>
+              <h2>Great work! Your system grew.</h2>
+              <p>You added feedback so players always know what happened.</p>
+            </div>
+            <div className="mini-build-trail">
+              <strong>Build trail</strong>
+              {[1, 2, 3, 4, 5].map((step) => (
+                <span className={step <= 3 ? "done" : ""} key={step}>
+                  {step <= 3 ? <Check size={14} /> : null}
+                  {step}
+                </span>
+              ))}
+            </div>
+          </section>
+        </section>
+        <aside className="logic-right-rail">
+          {renderNextBuildPanel("growth")}
+          {renderQuietAiCard("Small steps make big systems.", "You're building something amazing.")}
+        </aside>
+      </section>
+    );
+  }
+
+  function renderMilestones() {
+    if (activeScaffoldStep === "explain") return renderSystemGrowthMap();
+    if (activeScaffoldStep === "logic" || activeScaffoldStep === "build" || activeScaffoldStep === "preview") {
+      return renderLogicPreviewStage();
+    }
+    return renderChecksStage();
+  }
+
   function renderPreviewDebug() {
+    if (currentStepIsDone || activeScaffoldStep === "explain") {
+      return renderSystemGrowthMap();
+    }
+    return renderMismatchLens();
+
     return (
       <section className="stage-view debug-stage">
         <div className="project-topline">
@@ -2112,9 +2232,9 @@ export function BuildCompanionWorkspace() {
                 {debugDiagnosis ? (
                   <>
                     <small>AI idea · updated just now</small>
-                    <p>{debugDiagnosis.fixSummary}</p>
+                    <p>{debugDiagnosis?.fixSummary}</p>
                     <div className="debug-choice-list">
-                      {debugDiagnosis.choices.map((choice) => (
+                      {(debugDiagnosis?.choices ?? []).map((choice) => (
                         <button className={`choice-button ${choice.isLikely ? "selected" : ""}`} type="button" key={choice.label}>
                           {choice.label}
                         </button>
@@ -2235,15 +2355,24 @@ export function BuildCompanionWorkspace() {
       <header className="studio-appbar">
         <div className="studio-brand-row">
           <button className="studio-brand" type="button" onClick={() => setActiveStage(project ? "milestones" : "dashboard")}>
-            <span className="studio-brand-mark">G</span>
+            <span className="studio-brand-mark" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </span>
             <strong>Goal-to-Milestone</strong>
           </button>
           <span className="appbar-divider" />
-          <button className="project-switcher" type="button" onClick={() => project ? setActiveStage("milestones") : setActiveStage("dashboard")}>
-            <Folder size={20} />
-            {projectTitle}
-            <ChevronDown size={16} />
-          </button>
+          <div className="studio-breadcrumb">
+            <button type="button" onClick={() => setActiveStage("dashboard")}>My Projects</button>
+            <span>›</span>
+            <button type="button" onClick={() => project ? setActiveStage("flowchart") : setActiveStage("dashboard")}>{projectTitle}</button>
+            <Pencil size={18} />
+            <small>
+              <CheckCircle2 size={15} />
+              All changes saved
+            </small>
+          </div>
         </div>
 
         <div className="studio-stage-chips" aria-label="Project stages">
@@ -2271,20 +2400,20 @@ export function BuildCompanionWorkspace() {
 
         <div className="studio-actions">
           <span className="saved-status">
-            <CheckCircle2 size={16} />
+            <Cloud size={18} />
             Saved just now
           </span>
-          <button className="studio-action-button" type="button" onClick={() => appendAssistantLog("Saved locally for this prototype.")}>
-            <Save size={18} />
-            Save
+          <span className="appbar-divider" />
+          <button className="studio-action-button" type="button" onClick={() => appendAssistantLog("Help stays simple: pick one thing you want to understand.")}>
+            <CircleHelp size={18} />
+            Help
           </button>
-          <button className="studio-action-button" type="button" disabled>
-            <User size={18} />
-            Share
+          <span className="appbar-divider" />
+          <button className="studio-avatar-button" type="button" aria-label="Learner menu">
+            A
           </button>
-          <button className="studio-action-button" type="button" onClick={() => setDrawerOpen((open) => !open)}>
-            <MoreHorizontal size={18} />
-            More
+          <button className="studio-action-button compact-icon" type="button" onClick={() => setDrawerOpen((open) => !open)} title="More">
+            <ChevronDown size={18} />
           </button>
           <button className="studio-action-button compact-icon" type="button" title="New goal" onClick={handleResetWorkspace}>
             <RefreshCcw size={17} />

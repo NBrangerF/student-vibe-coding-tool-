@@ -495,7 +495,7 @@ async function callStructuredOpenAI({ name, schema, system, user }) {
     throw error;
   }
 
-  const model = process.env.OPENAI_MODEL || "gpt-5.5";
+  const model = process.env.OPENAI_MODEL || "gpt-5.4-mini";
   const response = await postOpenAIJson({
     model,
     input: [

@@ -12,19 +12,17 @@ Runtime shape:
 ```text
 Idea Studio
   -> multi-turn goal interview
-  -> Project Flowchart with visual system cards
+  -> System Trail Canvas with visual system tiles
   -> choose first bounded milestone
   -> Milestone Room
   -> student-authored done checklist
   -> LLM checklist feedback
   -> shared checklist confirmation
-  -> visual logic map
-  -> guided build step
-  -> p5.js iframe live preview
-  -> student preview check-off
-  -> Preview Debug / expected-vs-observed
+  -> Logic + Preview Stage
+  -> guided build / p5.js iframe live preview
+  -> Mismatch Lens / expected-vs-observed debug
   -> mini-explain
-  -> System Map update
+  -> System Growth Map
   -> choose next milestone
 ```
 
@@ -46,6 +44,19 @@ Level 2: Milestone Room
 Level 3: Preview Feedback Loop
   What did I expect? What did I observe? What should I fix or connect next?
 ```
+
+The May 15 design integration reframes the primary surfaces around one hero object per screen:
+
+```text
+Idea Studio        -> idea seed and visible project preview
+System Trail       -> curved build trail with completed/current/upcoming tiles
+Milestone Room     -> current step story and My Checks note
+Logic + Preview    -> logic chain and preview stage
+Mismatch Lens      -> "I wanted" vs "I saw"
+System Growth Map  -> what changed in the system
+```
+
+Quiet AI appears as a contextual nudge card rather than a full chat panel. Advanced actions such as code, history, reset, and rollback stay behind the compact top-bar controls.
 
 Default UI copy is English and student-facing. Technical labels are translated into Grade 3 language such as "what you see", "what you just added", "small step", and "what happens next".
 
@@ -177,8 +188,9 @@ Global visual system for the prototype:
 
 - Grade 3 project studio top app bar
 - mobile-only horizontal stage chips
-- Idea Studio, Project Flowchart, Milestone Room, and Preview Debug / System Map surfaces
-- Milestone Room three-zone layout: Project Map, large Preview / observation area, and Scaffold Panel
+- Idea Studio, System Trail Canvas, Milestone Room, Logic + Preview, Mismatch Lens, and System Growth Map surfaces
+- System Trail visual language: soft rail background, system tiles, completed/current/upcoming legend, selected step inspector, and next-build panel
+- Milestone Room three-zone layout: project side card, large thinking / preview area, and step guide / Quiet AI rail
 - student-authored checklist workshop with draft rows, AI feedback, and suggested revision
 - visual logic cards for action, check, output, feedback, and state
 - compact embedded tool drawer for changes, code, console, and history
@@ -191,33 +203,39 @@ The CSS is intentionally app-surface oriented rather than landing-page oriented.
 Main product workspace. Owns the interactive user flow:
 
 - local `activeStage` state for Idea Studio, Flowchart, Milestone Room, and Preview / Debug
-- top project studio shell with project switcher, saved state, Save / Share / More actions, and mobile stage chips
+- top project studio shell with brand, breadcrumb, saved state, Help, learner avatar, compact More / reset / rollback controls, and mobile stage chips
 - idea input
 - visual project idea preview
 - starter shortcuts
 - multi-turn goal interview
 - synchronous project path map updates
 - project path generation
-- vertical project flowchart cards and path chooser
+- System Trail Canvas with curved rail, completed/current/upcoming tiles, selected-step details, and right-side next build choices
 - milestone selection
 - Milestone Room flow
 - student-authored done checklist draft
 - LLM checklist feedback
 - shared checklist confirmation
-- main-area checklist workshop for Grade 3 criteria articulation
+- My Checks note for Grade 3 criteria articulation
 - student preview check-off with Yes / Not yet / Not sure
-- logic sketch
-- center visual logic map
+- logic sketch and Logic Chain visualization
 - prediction question
 - small patch application
 - live preview run/restart
-- visual debugging
+- Mismatch Lens visual debugging
 - mini-explain
-- system map update cards
+- System Growth Map update
 - checkpoint creation and rollback
 - lightweight build journey trace
 - Grade 3 copy mode for replacing technical feedback with student-facing language such as "what you see", "what you made", and "next small step"
 - local storage hydration guard so returning project state is not overwritten by the initial empty render
+
+Recent visual integration notes:
+
+- `renderFlowchart()` now renders the System Trail Canvas instead of the older vertical flowchart board.
+- `renderMilestones()` routes to My Checks, Logic + Preview, or System Growth Map based on `activeScaffoldStep`.
+- `renderPreviewDebug()` now routes to Mismatch Lens while a step needs fixing and System Growth Map after completion.
+- Stage/scaffold changes scroll the page back to the top so the sticky app bar does not cover the new hero object.
 
 This component calls `postJson()` from `src/lib/api-client.ts` using endpoint-style paths such as `/api/project/path` and `/api/build/patch`.
 
@@ -400,7 +418,7 @@ OpenAI Responses API integration.
 Responsibilities:
 
 - calls `https://api.openai.com/v1/responses`
-- uses `OPENAI_MODEL`, defaulting to `gpt-5.5`
+- uses `OPENAI_MODEL`, defaulting to `gpt-5.4-mini`
 - requests structured JSON with a JSON schema
 - asks for English student-facing UI text
 - prompts the model to grow the path map gradually and avoid pre-generating future milestones
@@ -443,7 +461,7 @@ Create `.env.local` from `.env.example` when an API key is available:
 
 ```text
 OPENAI_API_KEY=...
-OPENAI_MODEL=gpt-5.5
+OPENAI_MODEL=gpt-5.4-mini
 API_PORT=8787
 # Optional when OpenAI must be reached through a local proxy:
 NODE_USE_ENV_PROXY=1
