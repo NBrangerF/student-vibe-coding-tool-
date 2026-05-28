@@ -1,44 +1,221 @@
-export type ProjectStatus = "draft" | "path_generated" | "in_progress" | "complete";
-export type MilestoneStatus = "not_started" | "in_progress" | "needs_fix" | "done";
-export type BuildEventType =
-  | "idea_captured"
-  | "path_generated"
-  | "milestone_planned"
-  | "patch_proposed"
-  | "patch_applied"
-  | "preview_run"
-  | "debug_started"
-  | "checkpoint_created"
-  | "mini_explain_answered";
+export type ProjectStatus = "draft" | "planning" | "trail_generated" | "trail_confirmed" | "in_progress" | "complete";
+export type SystemNodeStatus = "planned" | "current" | "building" | "completed" | "blocked";
+export type SystemEdgeType = "sequence" | "dependency" | "feedback-loop";
+export type ChecklistStatus = "unchecked" | "yes" | "not-yet" | "not-sure";
+export type ChecklistFeedbackTag = "clear" | "too-vague" | "missing-step";
+export type ChecklistSource = "student" | "ai-suggested";
 export type AiEngineSource = "openai" | "fallback";
+export type PlanningLens =
+  | "game-interaction"
+  | "creative-transform-tool"
+  | "task-organizer"
+  | "story-world"
+  | "simulation"
+  | "learning-helper-agent"
+  | "content-website"
+  | "data-dashboard"
+  | "communication-tool"
+  | "physical-computing"
+  | "generic-custom-system";
+export type ConfidenceLevel = "high" | "medium" | "low";
+export type SystemGrammarSlot =
+  | "actor"
+  | "primary-object"
+  | "input"
+  | "transformation"
+  | "output"
+  | "feedback"
+  | "state"
+  | "progression"
+  | "save-share"
+  | "boundary";
+export type PlanningSessionStatus =
+  | "started"
+  | "goal_understanding_generated"
+  | "goal_understanding_confirmed"
+  | "goal_understanding_needs_clarification"
+  | "outcome_clarified"
+  | "first_action_clarified"
+  | "system_response_clarified"
+  | "parts_selected"
+  | "draft_trail_created"
+  | "draft_trail_reviewed"
+  | "completed";
+export type PlanningResponseSource = "choice" | "free-input" | "not-sure";
+export type CandidateSystemPartSource = "ai-suggested" | "student-created" | "student-edited";
+export type DraftSystemNodeSource = "ai-suggested" | "student-chosen" | "student-edited";
+export type DraftSystemNodeStatus = "draft" | "selected-first" | "removed";
+
+export interface MilestoneSuggestion {
+  id: string;
+  title: string;
+  before: string;
+  after: string;
+  rationale?: string;
+}
+
+export interface SystemNode {
+  id: string;
+  title: string;
+  visibleBehavior: string;
+  systemRole: string;
+  status: SystemNodeStatus;
+  order: number;
+  dependencies?: string[];
+  suggestedMilestones?: MilestoneSuggestion[];
+}
+
+export interface SystemEdge {
+  from: string;
+  to: string;
+  type?: SystemEdgeType;
+}
+
+export interface SystemTrail {
+  nodes: SystemNode[];
+  edges: SystemEdge[];
+}
 
 export interface Project {
   id: string;
-  ownerId: string;
   title: string;
   originalIdea: string;
-  projectType: "p5_game_animation";
-  currentMilestoneId: string;
+  shortDescription?: string;
+  currentFocusNodeId?: string;
   status: ProjectStatus;
+  createdAt: string;
+  updatedAt: string;
+  systemTrail: SystemTrail;
+}
+
+export interface GoalUnderstanding {
+  projectTitle: string;
+  originalIdea: string;
+  learnerFacingRestatement: string;
+  planningLens: PlanningLens;
+  confidence: ConfidenceLevel;
+  primaryObject: string | null;
+  desiredChange: string | null;
+  likelyOutput: string | null;
+  userActor: string | null;
+  firstPossibleAction: string | null;
+  systemResponseHypothesis: string | null;
+  systemGrammar: {
+    actor?: string | null;
+    primaryObject?: string | null;
+    input?: string | null;
+    transformation?: string | null;
+    output?: string | null;
+    feedback?: string | null;
+    state?: string | null;
+    progression?: string | null;
+    saveShare?: string | null;
+    boundary?: string | null;
+  };
+  ambiguityFlags: string[];
+  safetyOrBoundaryNotes: string[];
+  recommendedCoPlanningStrategy: {
+    firstQuestionFocus:
+      | "artifact-outcome"
+      | "first-user-action"
+      | "input-source"
+      | "transformation"
+      | "output-preview"
+      | "system-boundary";
+    questionSequence: string[];
+  };
+  quietAI: string;
+}
+
+export interface PlanningChoice {
+  id: string;
+  label: string;
+  detail?: string;
+  visibleBehavior?: string;
+  fillsSlot?: SystemGrammarSlot;
+  systemRole?: string;
+}
+
+export interface PlanningQuestion {
+  id: "finished-artifact" | "first-user-action" | "first-system-response" | "system-parts";
+  title: string;
+  prompt: string;
+  quietAiNote: string;
+  choices: PlanningChoice[];
+  allowFreeText: boolean;
+  allowNotSure: boolean;
+  boundaryNote?: string;
+}
+
+export interface PlanningResponse {
+  id: string;
+  questionId: PlanningQuestion["id"];
+  answer: string;
+  source: PlanningResponseSource;
+  createdAt: string;
+}
+
+export interface CandidateSystemPart {
+  id: string;
+  title: string;
+  visibleBehavior: string;
+  systemRole: string;
+  selected: boolean;
+  source: CandidateSystemPartSource;
+}
+
+export interface DraftSystemNode {
+  id: string;
+  title: string;
+  visibleBehavior: string;
+  systemRole: string;
+  order: number;
+  status: DraftSystemNodeStatus;
+  source: DraftSystemNodeSource;
+}
+
+export interface DraftSystemTrail {
+  nodes: DraftSystemNode[];
+  edges: SystemEdge[];
+}
+
+export interface PlanningSession {
+  id: string;
+  projectId: string;
+  idea: string;
+  status: PlanningSessionStatus;
+  responses: PlanningResponse[];
+  candidateParts: CandidateSystemPart[];
+  goalUnderstanding?: GoalUnderstanding;
+  draftTrail?: DraftSystemTrail;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface Milestone {
+export interface ChecklistItem {
   id: string;
-  projectId: string;
-  order: number;
-  title: string;
-  visibleOutput: string;
-  concepts: string[];
-  doneChecklist: string[];
-  status: MilestoneStatus;
+  text: string;
+  source: ChecklistSource;
+  status?: ChecklistStatus;
+  feedbackTag?: ChecklistFeedbackTag;
 }
+
+export type BuildEventType =
+  | "idea_captured"
+  | "trail_generated"
+  | "node_selected"
+  | "checklist_drafted"
+  | "logic_planned"
+  | "patch_proposed"
+  | "patch_applied"
+  | "preview_run"
+  | "debug_started"
+  | "system_grew";
 
 export interface BuildEvent {
   id: string;
   projectId: string;
-  milestoneId?: string;
+  nodeId?: string;
   type: BuildEventType;
   summary: string;
   studentAction: string;
@@ -46,10 +223,18 @@ export interface BuildEvent {
   createdAt: string;
 }
 
+export interface PreviewState {
+  status: "idle" | "running" | "error";
+  runCount: number;
+  console: string[];
+  error?: string;
+  lastRunAt?: string;
+}
+
 export interface Checkpoint {
   id: string;
   projectId: string;
-  milestoneId: string;
+  nodeId: string;
   name: string;
   filesSnapshot: Record<string, string>;
   previewState: PreviewState;
@@ -78,34 +263,6 @@ export interface GoalInterviewTurn {
   createdAt: string;
 }
 
-export type PathMapNodeType = "goal" | "experience" | "mechanic" | "milestone" | "later";
-export type PathMapNodeStatus = "known" | "draft" | "open";
-
-export interface ProjectPathMapNode {
-  id: string;
-  type: PathMapNodeType;
-  status: PathMapNodeStatus;
-  label: string;
-  detail: string;
-  evidence: string;
-}
-
-export interface ProjectPathMapEdge {
-  from: string;
-  to: string;
-  label: string;
-}
-
-export interface ProjectPathMap {
-  title: string;
-  summary: string;
-  confidence: number;
-  nodes: ProjectPathMapNode[];
-  edges: ProjectPathMapEdge[];
-  openQuestions: string[];
-  updatedAt: string;
-}
-
 export interface GoalInterviewReadiness {
   answeredCount: number;
   requiredCount: number;
@@ -119,7 +276,7 @@ export interface GoalInterviewResponse {
   progressLabel: string;
   nextQuestion?: ClarificationQuestion | null;
   turns: GoalInterviewTurn[];
-  pathMap: ProjectPathMap;
+  projectPreview: Project;
   readiness: GoalInterviewReadiness;
   assistantMessage: string;
 }
@@ -134,9 +291,48 @@ export interface ClarificationResponse {
 export interface ProjectPathResponse {
   engineSource: AiEngineSource;
   project: Project;
-  milestones: Milestone[];
   starterCode: string;
-  pathMap: ProjectPathMap;
+  assistantMessage: string;
+}
+
+export interface PlanningStartResponse {
+  engineSource: AiEngineSource;
+  project: Project;
+  planningSession: PlanningSession;
+  goalUnderstanding: GoalUnderstanding;
+  currentQuestion?: PlanningQuestion | null;
+  starterCode: string;
+  assistantMessage: string;
+}
+
+export interface PlanningUnderstandingResponse {
+  engineSource: AiEngineSource;
+  project: Project;
+  planningSession: PlanningSession;
+  goalUnderstanding: GoalUnderstanding;
+  currentQuestion?: PlanningQuestion | null;
+  assistantMessage: string;
+}
+
+export interface PlanningAnswerResponse {
+  engineSource: AiEngineSource;
+  planningSession: PlanningSession;
+  currentQuestion?: PlanningQuestion;
+  draftPreviewNodes: string[];
+  assistantMessage: string;
+}
+
+export interface DraftTrailResponse {
+  engineSource: AiEngineSource;
+  planningSession: PlanningSession;
+  draftTrail: DraftSystemTrail;
+  assistantMessage: string;
+}
+
+export interface ConfirmedTrailResponse {
+  engineSource: AiEngineSource;
+  project: Project;
+  planningSession: PlanningSession;
   assistantMessage: string;
 }
 
@@ -146,9 +342,20 @@ export interface PredictionQuestion {
   correctIndex: number;
 }
 
+export interface LogicChainStep {
+  id: string;
+  title: string;
+  detail: string;
+  role: "user-action" | "system-change" | "system-output" | "user-understanding";
+}
+
 export interface MilestonePlanResponse {
-  milestone: Milestone;
-  logicSketch: string[];
+  node: SystemNode;
+  story: {
+    before: string;
+    after: string;
+  };
+  logicChain: LogicChainStep[];
   predictionQuestion: PredictionQuestion;
   buildPlan: string[];
 }
@@ -181,14 +388,6 @@ export interface PatchResponse {
   };
 }
 
-export interface PreviewState {
-  status: "idle" | "running" | "error";
-  runCount: number;
-  console: string[];
-  error?: string;
-  lastRunAt?: string;
-}
-
 export interface DebugChoice {
   label: string;
   explanation: string;
@@ -201,4 +400,34 @@ export interface DebugDiagnosisResponse {
   choices: DebugChoice[];
   likelyCause: string;
   fixSummary: string;
+}
+
+// Legacy path-map types are kept only for older helper components that are no
+// longer part of the primary studio flow.
+export type PathMapNodeType = "goal" | "experience" | "mechanic" | "milestone" | "later";
+export type PathMapNodeStatus = "known" | "draft" | "open";
+
+export interface ProjectPathMapNode {
+  id: string;
+  type: PathMapNodeType;
+  status: PathMapNodeStatus;
+  label: string;
+  detail: string;
+  evidence: string;
+}
+
+export interface ProjectPathMapEdge {
+  from: string;
+  to: string;
+  label: string;
+}
+
+export interface ProjectPathMap {
+  title: string;
+  summary: string;
+  confidence: number;
+  nodes: ProjectPathMapNode[];
+  edges: ProjectPathMapEdge[];
+  openQuestions: string[];
+  updatedAt: string;
 }

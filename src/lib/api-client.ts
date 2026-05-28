@@ -1,20 +1,8 @@
 import { mockPostJson } from "@/lib/mock-api";
 
-const localOnlyRoutes = new Set([
-  "/api/idea/clarify",
-  "/api/milestone/plan",
-  "/api/build/patch",
-  "/api/preview/run",
-  "/api/debug/diagnose",
-  "/api/checkpoint/create",
-  "/api/checkpoint/rollback"
-]);
+const SHOULD_FALL_BACK = new Set([404, 501, 503]);
 
 export async function postJson<TResponse>(url: string, body: unknown): Promise<TResponse> {
-  if (localOnlyRoutes.has(url)) {
-    return mockPostJson<TResponse>(url, body);
-  }
-
   try {
     const response = await fetch(url, {
       method: "POST",
@@ -22,12 +10,16 @@ export async function postJson<TResponse>(url: string, body: unknown): Promise<T
       body: JSON.stringify(body)
     });
 
-    if (!response.ok) {
-      throw new Error(`API ${response.status}`);
+    if (response.ok) return (await response.json()) as TResponse;
+
+    if (SHOULD_FALL_BACK.has(response.status)) {
+      return mockPostJson<TResponse>(url, body);
     }
 
-    return (await response.json()) as TResponse;
-  } catch {
-    return mockPostJson<TResponse>(url, body);
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(typeof payload.error === "string" ? payload.error : `Request failed with ${response.status}`);
+  } catch (error) {
+    if (error instanceof TypeError) return mockPostJson<TResponse>(url, body);
+    throw error;
   }
 }

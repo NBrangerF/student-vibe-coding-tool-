@@ -1,18 +1,35 @@
 import {
   answerGoalInterview,
   createClarification,
+  createDraftTrailFromCandidates,
   createGoalInterview,
   createProjectPath,
+  confirmGoalUnderstanding,
+  confirmDraftTrail,
   diagnoseDebug,
+  answerPlanningQuestion,
   generatePatch,
   planMilestone,
-  reviewChecklist
+  reviewDraftTrail,
+  reviewChecklist,
+  startCoPlanning
 } from "@/lib/mvp-engine";
-import { Checkpoint, GoalInterviewTurn, Milestone, PreviewState, ProjectPathMap } from "@/lib/types";
+import {
+  Checkpoint,
+  DraftSystemTrail,
+  GoalInterviewTurn,
+  PlanningQuestion,
+  PlanningUnderstandingResponse,
+  PlanningResponseSource,
+  PlanningSession,
+  PreviewState,
+  Project,
+  SystemNode
+} from "@/lib/types";
 
 function delay<T>(value: T): Promise<T> {
   return new Promise((resolve) => {
-    window.setTimeout(() => resolve(value), 180);
+    window.setTimeout(() => resolve(value), 160);
   });
 }
 
@@ -46,33 +63,130 @@ export async function mockPostJson<TResponse>(url: string, body: unknown): Promi
     );
   }
 
+  if (url === "/api/planning/start") {
+    const idea = String(payload.idea ?? "").trim();
+    if (!idea) throw new Error("idea is required");
+    return delay(startCoPlanning(idea) as TResponse);
+  }
+
+  if (url === "/api/planning/understanding") {
+    const project = payload.project as Project | undefined;
+    const session = payload.session as PlanningSession | undefined;
+    const extraDetail = String(payload.extraDetail ?? "").trim();
+    if (!project || !session) throw new Error("project and session are required");
+    return delay(confirmGoalUnderstanding({ project, session, extraDetail }) as PlanningUnderstandingResponse as TResponse);
+  }
+
+  if (url === "/api/planning/session/start") {
+    const learnerIdea = String(payload.learnerIdea ?? payload.idea ?? "").trim();
+    if (!learnerIdea) throw new Error("learnerIdea is required");
+    const started = startCoPlanning(learnerIdea);
+    return delay({
+      sessionId: started.planningSession.id,
+      status: "GOAL_UNDERSTANDING_GENERATED",
+      allowedActions: ["confirm-understanding"],
+      uiInstruction: {
+        surface: "goal-understanding",
+        quietAI: started.assistantMessage
+      },
+      data: {
+        skill: "goal-understanding",
+        projectTitle: started.project.title,
+        goalUnderstanding: started.goalUnderstanding,
+        quietAI: started.assistantMessage
+      },
+      session: started.planningSession,
+      project: started.project
+    } as TResponse);
+  }
+
+  if (url === "/api/planning/session/advance") {
+    const session = payload.session as PlanningSession | undefined;
+    if (!session) throw new Error("session is required");
+    return delay({
+      sessionId: session.id,
+      status: "IDEA_REFLECTED",
+      allowedActions: ["answer-question"],
+      uiInstruction: {
+        surface: "question",
+        quietAI: "Fallback planning is active."
+      },
+      data: {
+        skill: "goal-intake",
+        quietAI: "Fallback planning is active."
+      },
+      session,
+      project: payload.project
+    } as TResponse);
+  }
+
+  if (url === "/api/planning/answer") {
+    const session = payload.session as PlanningSession | undefined;
+    const questionId = payload.questionId as PlanningQuestion["id"] | undefined;
+    const answer = String(payload.answer ?? "").trim();
+    const source = (payload.source as PlanningResponseSource | undefined) ?? "choice";
+    if (!session || !questionId || !answer) throw new Error("session, questionId, and answer are required");
+    return delay(answerPlanningQuestion({ session, questionId, answer, source }) as TResponse);
+  }
+
+  if (url === "/api/planning/draft") {
+    const session = payload.session as PlanningSession | undefined;
+    if (!session) throw new Error("session is required");
+    return delay(createDraftTrailFromCandidates(session) as TResponse);
+  }
+
+  if (url === "/api/planning/review") {
+    const session = payload.session as PlanningSession | undefined;
+    const draftTrail = payload.draftTrail as DraftSystemTrail | undefined;
+    if (!session || !draftTrail) throw new Error("session and draftTrail are required");
+    return delay(reviewDraftTrail(session, draftTrail) as TResponse);
+  }
+
+  if (url === "/api/planning/confirm") {
+    const project = payload.project as Project | undefined;
+    const session = payload.session as PlanningSession | undefined;
+    const draftTrail = payload.draftTrail as DraftSystemTrail | undefined;
+    const selectedFirstNodeId = String(payload.selectedFirstNodeId ?? "");
+    if (!project || !session || !draftTrail || !selectedFirstNodeId) {
+      throw new Error("project, session, draftTrail, and selectedFirstNodeId are required");
+    }
+    return delay(confirmDraftTrail({ project, session, draftTrail, selectedFirstNodeId }) as TResponse);
+  }
+
   if (url === "/api/project/path") {
     const idea = String(payload.idea ?? "").trim();
     if (!idea) throw new Error("idea is required");
-    const planningInput = ((payload.interviewTurns as GoalInterviewTurn[]) ??
-      (payload.clarificationAnswers as string[]) ??
-      []) as GoalInterviewTurn[] | string[];
-    return delay(createProjectPath(idea, planningInput, payload.pathMap as ProjectPathMap | undefined) as TResponse);
+    return delay(createProjectPath(idea) as TResponse);
   }
 
   if (url === "/api/milestone/plan") {
-    if (!payload.milestone) throw new Error("milestone is required");
-    return delay(planMilestone(payload.milestone as Milestone) as TResponse);
+    if (!payload.node) throw new Error("node is required");
+    return delay(
+      planMilestone({
+        node: payload.node as SystemNode,
+        checklist: (payload.checklist as string[] | undefined) ?? []
+      }) as TResponse
+    );
   }
 
   if (url === "/api/checklist/review") {
-    if (!payload.milestone) throw new Error("milestone is required");
+    if (!payload.node) throw new Error("node is required");
     return delay(
       reviewChecklist({
-        milestone: payload.milestone as Milestone,
+        node: payload.node as SystemNode,
         draftChecklist: String(payload.draftChecklist ?? "")
       }) as TResponse
     );
   }
 
   if (url === "/api/build/patch") {
-    if (!payload.milestone) throw new Error("milestone is required");
-    return delay(generatePatch(payload.milestone as Milestone) as TResponse);
+    if (!payload.node) throw new Error("node is required");
+    return delay(
+      generatePatch({
+        node: payload.node as SystemNode,
+        checklist: (payload.checklist as string[] | undefined) ?? []
+      }) as TResponse
+    );
   }
 
   if (url === "/api/preview/run") {
@@ -91,20 +205,20 @@ export async function mockPostJson<TResponse>(url: string, body: unknown): Promi
       diagnoseDebug({
         visibleBehavior: payload.visibleBehavior as string | undefined,
         failedChecklistItem: payload.failedChecklistItem as string | undefined,
-        milestone: payload.milestone as Milestone | undefined
+        node: payload.node as SystemNode | undefined
       }) as TResponse
     );
   }
 
   if (url === "/api/checkpoint/create") {
-    if (!payload.projectId || !payload.milestoneId || !payload.filesSnapshot) {
-      throw new Error("projectId, milestoneId, and filesSnapshot are required");
+    if (!payload.projectId || !payload.nodeId || !payload.filesSnapshot) {
+      throw new Error("projectId, nodeId, and filesSnapshot are required");
     }
 
     const checkpoint: Checkpoint = {
       id: `checkpoint-${Date.now()}`,
       projectId: String(payload.projectId),
-      milestoneId: String(payload.milestoneId),
+      nodeId: String(payload.nodeId),
       name: String(payload.name ?? "Saved version"),
       filesSnapshot: payload.filesSnapshot as Record<string, string>,
       previewState: (payload.previewState as PreviewState | undefined) ?? { status: "idle", runCount: 0, console: [] },

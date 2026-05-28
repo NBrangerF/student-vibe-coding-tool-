@@ -3,154 +3,119 @@
 import {
   ArrowLeft,
   ArrowRight,
-  Bell,
-  BookOpen,
-  Bot,
-  Bug,
   Check,
   CheckCircle2,
   ChevronDown,
   CircleHelp,
-  Code2,
   Cloud,
-  Database,
-  Download,
   Eye,
-  ExternalLink,
   Flag,
   Folder,
   Gamepad2,
   GitBranch,
-  Headphones,
+  HeartPulse,
   Home,
   Layers3,
   Lightbulb,
   ListChecks,
-  Map,
+  Map as MapIcon,
   MessageCircle,
-  Minus,
   Monitor,
-  MoreHorizontal,
   MousePointerClick,
-  Paintbrush,
+  PawPrint,
   Pencil,
   Play,
   Plus,
   RefreshCcw,
   RotateCcw,
   Save,
-  Send,
   Share2,
   Sparkles,
+  Sprout,
   Star,
   Target,
-  Trash2,
-  Trophy,
   User,
   Wand2,
   Workflow,
   X
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { postJson } from "@/lib/api-client";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { P5Preview } from "@/components/p5-preview";
-import { ProjectPathMapView } from "@/components/project-path-map";
+import { postJson } from "@/lib/api-client";
+import { languageLabel, translateUiText, UI_LANGUAGE_STORAGE_KEY, type UiLanguage } from "@/lib/i18n";
 import { STARTER_CODE } from "@/lib/p5-code";
 import {
+  CandidateSystemPart,
   ChecklistFeedbackResponse,
+  ChecklistItem,
+  ChecklistStatus,
   Checkpoint,
   DebugDiagnosisResponse,
-  GoalInterviewResponse,
-  LearningTrace,
-  Milestone,
+  DraftSystemTrail,
+  DraftTrailResponse,
+  ConfirmedTrailResponse,
+  GoalUnderstanding,
+  LogicChainStep,
   MilestonePlanResponse,
   PatchResponse,
+  PlanningAnswerResponse,
+  PlanningChoice,
+  PlanningQuestion,
+  PlanningSession,
+  PlanningStartResponse,
+  PlanningUnderstandingResponse,
   PreviewState,
   Project,
-  ProjectPathMap,
-  ProjectPathResponse
+  SystemNode
 } from "@/lib/types";
 
-type AppStage = "dashboard" | "flowchart" | "milestones" | "preview";
-type DrawerTab = "changes" | "code" | "console" | "history";
-type ScaffoldStep = "story" | "checklist" | "logic" | "build" | "preview" | "explain";
-type ChecklistCheckStatus = "yes" | "not_yet" | "unsure";
-type TrailItemStatus = Milestone["status"] | "upcoming" | "open" | "known";
-type TrailItem = {
-  id: string;
-  order: number;
-  title: string;
-  detail: string;
-  status: TrailItemStatus;
-  icon: typeof Gamepad2;
-};
+type StudioStage = "idea" | "understanding" | "coplan" | "draft" | "first" | "trail" | "room" | "preview" | "debug" | "growth";
+type RoomStep = "story" | "checks" | "logic" | "build" | "preview" | "changed";
 
-const STORAGE_KEY = "student-ai-build-companion-state-v2";
-const DEFAULT_IDEA = "I want to make a quiz game about my school.";
+const STORAGE_KEY = "goal-to-milestone-co-planning-studio-v3";
 
-const starterCards = [
+const starterIdeas = [
   {
-    title: "Quiz Game",
-    description: "Make a quiz game with points, questions, and fun feedback.",
-    idea: DEFAULT_IDEA,
-    tone: "violet",
-    icon: Gamepad2
-  },
-  {
-    title: "Pet Game",
-    description: "Create a game about a pet's adventure and challenges.",
-    idea: "I want to make a pet adventure game with choices and challenges.",
-    tone: "teal",
-    icon: Sparkles
+    title: "Pet Adventure Game",
+    idea: "I want to make a pet adventure game.",
+    detail: "A pet reacts to choices and unlocks a new scene.",
+    icon: PawPrint
   },
   {
     title: "Club Task App",
-    description: "Build an app to organize tasks for your club or team.",
-    idea: "I want to make a club task app for my school team.",
-    tone: "blue",
+    idea: "I want to make an app for my club tasks.",
+    detail: "A club can add tasks, mark them done, and see progress.",
     icon: ListChecks
   },
   {
-    title: "Story World Site",
-    description: "Design an interactive story world with pages and characters.",
-    idea: "I want to make an interactive story world about my school.",
-    tone: "amber",
-    icon: BookOpen
+    title: "Story World Website",
+    idea: "I want to make a story world website.",
+    detail: "Readers choose places and see the story path change.",
+    icon: Layers3
+  },
+  {
+    title: "Habitat Simulation",
+    idea: "I want to make a habitat simulation.",
+    detail: "A habitat changes when living things need water or food.",
+    icon: Sprout
+  },
+  {
+    title: "School Quiz Game",
+    idea: "I want to make a quiz game about my school.",
+    detail: "A sample fixture with questions, feedback, and score.",
+    icon: Gamepad2
   }
 ];
 
-const helperChoices = [
-  { label: "A title screen with a Start button", icon: Play },
-  { label: "A question right away", icon: CircleHelp },
-  { label: "A menu of quiz topics", icon: ListChecks },
-  { label: "Describe it myself", icon: Pencil }
-];
+const sentenceStarters = ["I can...", "When I click...", "I see...", "The game says...", "The score..."];
 
-const howItWorks = [
-  { title: "Share your idea", description: "Type anything that matters to you.", icon: Sparkles },
-  { title: "AI helps clarify", description: "Answer a few quick questions or describe it your way.", icon: Bot },
-  { title: "We make a map", description: "Get small steps you can build one by one.", icon: Flag },
-  { title: "You build and iterate", description: "Preview, test, and improve as you go.", icon: Trophy }
-];
-
-const sentenceStarters = ["I can...", "When I click..., the app...", "I see...", "The game tells me...", "The score..."];
-
-const scaffoldSteps: Array<{ id: ScaffoldStep; title: string; hint: string }> = [
-  { id: "story", title: "Step story", hint: "What are we making happen?" },
-  { id: "checklist", title: "My checklist", hint: "How will we know it works?" },
-  { id: "logic", title: "Logic map", hint: "What happens first, next, and after?" },
-  { id: "build", title: "Build step", hint: "Make one small change." },
-  { id: "preview", title: "Check preview", hint: "Compare what you expected and what you saw." },
-  { id: "explain", title: "Mini-explain", hint: "Name the tiny idea you used." }
-];
-
-const visualCues = [
-  { label: "Goal", detail: "what you want", icon: Target },
-  { label: "Action", detail: "what the player does", icon: MousePointerClick },
-  { label: "Process", detail: "what the app checks", icon: GitBranch },
-  { label: "Output", detail: "what appears", icon: Eye },
-  { label: "Feedback", detail: "what the player learns", icon: MessageCircle },
-  { label: "State", detail: "what the app remembers", icon: Database }
+const roomSteps: Array<{ id: RoomStep; label: string; detail: string; icon: typeof Flag }> = [
+  { id: "story", label: "Milestone story", detail: "Why this part matters.", icon: Flag },
+  { id: "checks", label: "My checks", detail: "Write what should happen.", icon: ListChecks },
+  { id: "logic", label: "See the logic", detail: "How the system works.", icon: Workflow },
+  { id: "build", label: "Build and try", detail: "Make one small change.", icon: Wand2 },
+  { id: "preview", label: "Check preview", detail: "Test what you can see.", icon: Eye },
+  { id: "changed", label: "What changed", detail: "Name how the system grew.", icon: Sparkles }
 ];
 
 function parseChecklistText(text: string): string[] {
@@ -163,578 +128,712 @@ function parseChecklistText(text: string): string[] {
         .trim()
     )
     .filter(Boolean)
-    .slice(0, 4);
+    .slice(0, 5);
 }
 
-function systemCardsForMilestone(order?: number) {
-  if (!order || order <= 1) {
-    return [
-      { kind: "goal", title: "Player opens quiz", detail: "The game has a clear beginning.", icon: Target },
-      { kind: "output", title: "Start screen appears", detail: "Title and Start button are visible.", icon: Eye }
-    ];
-  }
-  if (order === 2) {
-    return [
-      { kind: "action", title: "Player clicks Start", detail: "The first action begins the quiz.", icon: MousePointerClick },
-      { kind: "process", title: "Game changes screen", detail: "The app moves from start to question.", icon: GitBranch },
-      { kind: "output", title: "Question appears", detail: "The player can see choices.", icon: Eye }
-    ];
-  }
-  if (order === 3) {
-    return [
-      { kind: "action", title: "Player clicks answer", detail: "The game receives a choice.", icon: MousePointerClick },
-      { kind: "decision", title: "Game checks answer", detail: "Right answer or try again?", icon: GitBranch },
-      { kind: "feedback", title: "Message appears", detail: "The player knows what happened.", icon: MessageCircle }
-    ];
-  }
-  if (order === 4) {
-    return [
-      { kind: "input", title: "Correct answer", detail: "A right choice is counted.", icon: Check },
-      { kind: "state", title: "Score changes", detail: "The game remembers the points.", icon: Database },
-      { kind: "output", title: "Score is shown", detail: "The player sees progress.", icon: Eye }
-    ];
-  }
-  return [
-    { kind: "state", title: "Question list", detail: "The game remembers more questions.", icon: Database },
-    { kind: "process", title: "Next question", detail: "The quiz moves forward.", icon: GitBranch },
-    { kind: "feedback", title: "Result screen", detail: "The player sees the final score.", icon: MessageCircle }
-  ];
+function checklistItemsFromText(text: string, source: ChecklistItem["source"]): ChecklistItem[] {
+  return parseChecklistText(text).map((item, index) => ({
+    id: `check-${Date.now()}-${index}`,
+    text: item,
+    source,
+    status: "unchecked"
+  }));
 }
 
-function beforeAfterForMilestone(milestone?: Milestone) {
-  if (!milestone) {
-    return {
-      before: "No small step is selected yet.",
-      after: "Pick one step to see what should change."
-    };
-  }
-  if (milestone.order === 1) {
-    return {
-      before: "The project does not have a first screen yet.",
-      after: "The player sees a title and a Start button."
-    };
-  }
-  if (milestone.order === 2) {
-    return {
-      before: "Clicking Start does not show a playable question.",
-      after: "Clicking Start shows one question with answer choices."
-    };
-  }
-  if (milestone.order === 3) {
-    return {
-      before: "Clicking an answer does not tell the player anything.",
-      after: "Clicking an answer shows Correct or Try again."
-    };
-  }
-  if (milestone.order === 4) {
-    return {
-      before: "The game does not remember points yet.",
-      after: "Correct answers change the score."
-    };
-  }
+function starterChecksForNode(node?: SystemNode): string {
+  if (!node) return "";
+  const text = `${node.title} ${node.visibleBehavior} ${node.systemRole}`.toLowerCase();
+  if (/pet/.test(text)) return "I can see the pet.\nWhen I choose something, the pet reacts.\nI see what changed for the pet.";
+  if (/task|list|done/.test(text)) return "I can see the task list.\nWhen I click a task, it changes.\nI see the list update.";
+  if (/story|world|place|character/.test(text)) return "I can see the story world.\nWhen I choose a place, the story changes.\nI see what happens next.";
+  if (/habitat|plant|animal|need|balance/.test(text)) return "I can see the habitat.\nWhen I change one part, the habitat responds.\nI see what changed in the system.";
+  if (/score/.test(text)) return "I can see the score.\nThe score changes after the right answer.\nThe score stays on the screen.";
+  if (/question|answer|feedback|correct/.test(text)) return "I can click an answer.\nThe project shows what happened.\nI see a message right away.";
+  return `I can see ${node.title.toLowerCase()}.\nI can try one action.\nI see what changes.`;
+}
+
+function nodeIcon(node?: SystemNode) {
+  const text = `${node?.title ?? ""} ${node?.systemRole ?? ""}`.toLowerCase();
+  if (/pet/.test(text)) return PawPrint;
+  if (/task|list/.test(text)) return ListChecks;
+  if (/story|world|place/.test(text)) return Layers3;
+  if (/habitat|plant/.test(text)) return Sprout;
+  if (/score/.test(text)) return Star;
+  if (/feedback|react|message/.test(text)) return MessageCircle;
+  if (/question|answer|choice|input/.test(text)) return CircleHelp;
+  if (/start|first|entry/.test(text)) return Play;
+  return Workflow;
+}
+
+function currentNode(project: Project | null, selectedNodeId: string): SystemNode | undefined {
+  if (!project) return undefined;
+  return (
+    project.systemTrail.nodes.find((node) => node.id === selectedNodeId) ??
+    project.systemTrail.nodes.find((node) => node.id === project.currentFocusNodeId) ??
+    project.systemTrail.nodes[0]
+  );
+}
+
+function nextNodeAfter(project: Project | null, node?: SystemNode): SystemNode | undefined {
+  if (!project || !node) return undefined;
+  return project.systemTrail.nodes.find((candidate) => candidate.order > node.order && candidate.status !== "completed");
+}
+
+function updateNode(project: Project, nodeId: string, patch: Partial<SystemNode>): Project {
   return {
-    before: "The quiz only has one short path.",
-    after: "The quiz moves through more questions and shows a result."
+    ...project,
+    updatedAt: new Date().toISOString(),
+    systemTrail: {
+      ...project.systemTrail,
+      nodes: project.systemTrail.nodes.map((node) => (node.id === nodeId ? { ...node, ...patch } : node))
+    }
   };
 }
 
-function statusLabel(status: Milestone["status"]): string {
-  if (status === "done") return "Done";
-  if (status === "in_progress") return "Current";
-  if (status === "needs_fix") return "Fix";
-  return "Next";
+function setCurrentNode(project: Project, nodeId: string): Project {
+  return {
+    ...project,
+    currentFocusNodeId: nodeId,
+    status: "in_progress",
+    updatedAt: new Date().toISOString(),
+    systemTrail: {
+      ...project.systemTrail,
+      nodes: project.systemTrail.nodes.map((node) => {
+        if (node.id === nodeId) return { ...node, status: node.status === "completed" ? "completed" : "current" };
+        if (node.status === "current" || node.status === "building") return { ...node, status: "planned" };
+        return node;
+      })
+    }
+  };
 }
 
-function mergeUnique(existing: string[], incoming: string[]): string[] {
-  return Array.from(new Set([...existing, ...incoming]));
+function roleLabel(role: LogicChainStep["role"]): string {
+  if (role === "user-action") return "User action";
+  if (role === "system-change") return "System changes";
+  if (role === "system-output") return "What appears";
+  return "User understands";
 }
 
-function updateMilestone(milestones: Milestone[], id: string, patch: Partial<Milestone>): Milestone[] {
-  return milestones.map((milestone) => (milestone.id === id ? { ...milestone, ...patch } : milestone));
+function statusClass(node: SystemNode, selectedNodeId: string): string {
+  const selected = node.id === selectedNodeId ? "selected" : "";
+  return `${node.status} ${selected}`;
 }
 
-function nextMilestoneAfter(milestones: Milestone[], selected?: Milestone): Milestone | undefined {
-  if (!selected) return milestones[0];
-  return milestones.find((milestone) => milestone.order === selected.order + 1);
+function planningPreviewNodes(session: PlanningSession | null): string[] {
+  if (!session) return [];
+  const responseByQuestion = new Map(session.responses.map((response) => [response.questionId, response.answer]));
+  const preview = [
+    responseByQuestion.get("first-user-action"),
+    responseByQuestion.get("first-system-response"),
+    ...session.candidateParts.filter((part) => part.selected).slice(0, 4).map((part) => part.title)
+  ].filter(Boolean) as string[];
+
+  if (!preview.length && responseByQuestion.get("finished-artifact")) {
+    return [responseByQuestion.get("finished-artifact") as string];
+  }
+
+  return Array.from(new Set(preview)).slice(0, 6);
 }
 
-function grade3Copy(text: string): string {
-  return text
-    .replace(/\bp5\.js\b/gi, "the preview")
-    .replace(/\bbounded milestone\b/gi, "small step")
-    .replace(/\bmilestone\b/gi, "step")
-    .replace(/\bstate changes?\b/gi, "screen change")
-    .replace(/\brender(ed|ing|s)?\b/gi, "show")
-    .replace(/\bcondition\b/gi, "rule")
-    .replace(/\bUI\s*\+\s*Data\b/gi, "screen + answers");
+function draftSourceLabel(source: "ai-suggested" | "student-chosen" | "student-edited") {
+  if (source === "student-edited") return "You edited";
+  if (source === "student-chosen") return "You chose";
+  return "AI suggested";
+}
+
+function candidateSourceLabel(source: CandidateSystemPart["source"]) {
+  if (source === "student-created") return "You added";
+  if (source === "student-edited") return "You edited";
+  return "AI suggested";
 }
 
 export function BuildCompanionWorkspace() {
-  const [activeStage, setActiveStage] = useState<AppStage>("dashboard");
-  const [idea, setIdea] = useState(DEFAULT_IDEA);
-  const [goalInterview, setGoalInterview] = useState<GoalInterviewResponse | null>(null);
-  const [pathMap, setPathMap] = useState<ProjectPathMap | null>(null);
-  const [draftAnswer, setDraftAnswer] = useState("");
+  const [activeStage, setActiveStage] = useState<StudioStage>("idea");
+  const [uiLanguage, setUiLanguage] = useState<UiLanguage>("zh");
+  const [idea, setIdea] = useState("");
   const [project, setProject] = useState<Project | null>(null);
-  const [milestones, setMilestones] = useState<Milestone[]>([]);
-  const [selectedMilestoneId, setSelectedMilestoneId] = useState("");
-  const [milestonePlan, setMilestonePlan] = useState<MilestonePlanResponse | null>(null);
-  const [activeScaffoldStep, setActiveScaffoldStep] = useState<ScaffoldStep>("story");
+  const [planningSession, setPlanningSession] = useState<PlanningSession | null>(null);
+  const [goalUnderstanding, setGoalUnderstanding] = useState<GoalUnderstanding | null>(null);
+  const [understandingDetails, setUnderstandingDetails] = useState("");
+  const [planningQuestion, setPlanningQuestion] = useState<PlanningQuestion | null>(null);
+  const [planningFreeInput, setPlanningFreeInput] = useState("");
+  const [draftTrail, setDraftTrail] = useState<DraftSystemTrail | null>(null);
+  const [firstDraftNodeId, setFirstDraftNodeId] = useState("");
+  const [newCandidateTitle, setNewCandidateTitle] = useState("");
+  const [newDraftTitle, setNewDraftTitle] = useState("");
+  const [selectedNodeId, setSelectedNodeId] = useState("");
+  const [roomStep, setRoomStep] = useState<RoomStep>("story");
   const [draftChecklists, setDraftChecklists] = useState<Record<string, string>>({});
-  const [checklistFeedbackByMilestone, setChecklistFeedbackByMilestone] = useState<Record<string, ChecklistFeedbackResponse>>({});
-  const [confirmedChecklists, setConfirmedChecklists] = useState<Record<string, string[]>>({});
-  const [checklistChecks, setChecklistChecks] = useState<Record<string, Record<string, ChecklistCheckStatus>>>({});
-  const [predictionAnswer, setPredictionAnswer] = useState<number | null>(null);
-  const [miniExplain, setMiniExplain] = useState<PatchResponse["miniExplainQuestion"] | null>(null);
-  const [miniExplainAnswer, setMiniExplainAnswer] = useState<number | null>(null);
+  const [checklistFeedback, setChecklistFeedback] = useState<Record<string, ChecklistFeedbackResponse>>({});
+  const [confirmedChecklist, setConfirmedChecklist] = useState<Record<string, ChecklistItem[]>>({});
+  const [logicPlans, setLogicPlans] = useState<Record<string, MilestonePlanResponse>>({});
   const [code, setCode] = useState(STARTER_CODE);
-  const [changeSummary, setChangeSummary] = useState<string[]>([]);
-  const [checklistState, setChecklistState] = useState<Record<string, boolean>>({});
   const [previewState, setPreviewState] = useState<PreviewState>({ status: "idle", runCount: 0, console: [] });
   const [runKey, setRunKey] = useState(0);
-  const [drawerTab, setDrawerTab] = useState<DrawerTab>("changes");
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
   const [debugDiagnosis, setDebugDiagnosis] = useState<DebugDiagnosisResponse | null>(null);
-  const [debugSymptom, setDebugSymptom] = useState("I do not see that part working yet.");
-  const [failedChecklistItem, setFailedChecklistItem] = useState("");
-  const [trace, setTrace] = useState<LearningTrace>({
-    projectId: "draft",
-    conceptsTouched: [],
-    bugsFixed: [],
-    miniExplainAnswers: [],
-    decisionsMade: []
-  });
-  const [assistantLog, setAssistantLog] = useState<string[]>([
-    "Share your idea first. I will help turn it into small steps before we make changes."
-  ]);
+  const [observedBehavior, setObservedBehavior] = useState("Nothing changed yet.");
+  const [missingCheckId, setMissingCheckId] = useState("");
+  const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
+  const [assistantNote, setAssistantNote] = useState("Start with your idea. We will make the system visible before building.");
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hasLoadedStoredState, setHasLoadedStoredState] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const t = useCallback((text: string | null | undefined) => translateUiText(text, uiLanguage), [uiLanguage]);
+  const isZh = uiLanguage === "zh";
+
+  const selectedNode = useMemo(() => currentNode(project, selectedNodeId), [project, selectedNodeId]);
+  const selectedChecklist = selectedNode ? confirmedChecklist[selectedNode.id] ?? [] : [];
+  const selectedDraft = selectedNode ? draftChecklists[selectedNode.id] ?? "" : "";
+  const selectedFeedback = selectedNode ? checklistFeedback[selectedNode.id] : undefined;
+  const selectedPlan = selectedNode ? logicPlans[selectedNode.id] : undefined;
+  const nextNode = nextNodeAfter(project, selectedNode);
+  const selectedStory = selectedPlan?.story ?? selectedNode?.suggestedMilestones?.[0] ?? {
+    before: "This system part is not built yet.",
+    after: selectedNode?.visibleBehavior ?? "One visible part changes."
+  };
+  const completedCount = project?.systemTrail.nodes.filter((node) => node.status === "completed").length ?? 0;
+  const missingCheck =
+    selectedChecklist.find((item) => item.id === missingCheckId) ??
+    selectedChecklist.find((item) => item.status === "not-yet" || item.status === "not-sure") ??
+    selectedChecklist[0];
 
   useEffect(() => {
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (!stored) {
-      setHasLoadedStoredState(true);
-      return;
-    }
-
-    try {
-      const parsed = JSON.parse(stored) as {
-        activeStage?: AppStage;
-        idea?: string;
-        project?: Project;
-        goalInterview?: GoalInterviewResponse;
-        pathMap?: ProjectPathMap;
-        milestones?: Milestone[];
-        selectedMilestoneId?: string;
-        activeScaffoldStep?: ScaffoldStep;
-        draftChecklists?: Record<string, string>;
-        checklistFeedbackByMilestone?: Record<string, ChecklistFeedbackResponse>;
-        confirmedChecklists?: Record<string, string[]>;
-        checklistChecks?: Record<string, Record<string, ChecklistCheckStatus>>;
-        code?: string;
-        changeSummary?: string[];
-        checkpoints?: Checkpoint[];
-        trace?: LearningTrace;
-      };
-      if (parsed.activeStage) setActiveStage(parsed.activeStage);
-      if (parsed.idea) setIdea(parsed.idea);
-      if (parsed.project) setProject(parsed.project);
-      if (parsed.goalInterview) setGoalInterview(parsed.goalInterview);
-      if (parsed.pathMap) setPathMap(parsed.pathMap);
-      if (parsed.milestones) setMilestones(parsed.milestones);
-      if (parsed.selectedMilestoneId) setSelectedMilestoneId(parsed.selectedMilestoneId);
-      if (parsed.activeScaffoldStep) setActiveScaffoldStep(parsed.activeScaffoldStep);
-      if (parsed.draftChecklists) setDraftChecklists(parsed.draftChecklists);
-      if (parsed.checklistFeedbackByMilestone) setChecklistFeedbackByMilestone(parsed.checklistFeedbackByMilestone);
-      if (parsed.confirmedChecklists) setConfirmedChecklists(parsed.confirmedChecklists);
-      if (parsed.checklistChecks) setChecklistChecks(parsed.checklistChecks);
-      if (parsed.code) setCode(parsed.code);
-      if (parsed.changeSummary) setChangeSummary(parsed.changeSummary);
-      if (parsed.checkpoints) setCheckpoints(parsed.checkpoints);
-      if (parsed.trace) setTrace(parsed.trace);
-    } catch {
-      window.localStorage.removeItem(STORAGE_KEY);
-    } finally {
-      setHasLoadedStoredState(true);
+    const storedLanguage = window.localStorage.getItem(UI_LANGUAGE_STORAGE_KEY);
+    if (storedLanguage === "zh" || storedLanguage === "en") {
+      setUiLanguage(storedLanguage);
     }
   }, []);
 
   useEffect(() => {
-    if (!hasLoadedStoredState) return;
+    window.localStorage.setItem(UI_LANGUAGE_STORAGE_KEY, uiLanguage);
+    document.documentElement.lang = uiLanguage === "zh" ? "zh-CN" : "en";
+  }, [uiLanguage]);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(STORAGE_KEY);
+    if (!stored) {
+      setHasLoaded(true);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(stored) as {
+        activeStage?: StudioStage;
+        idea?: string;
+        project?: Project;
+        planningSession?: PlanningSession;
+        goalUnderstanding?: GoalUnderstanding;
+        understandingDetails?: string;
+        planningQuestion?: PlanningQuestion;
+        draftTrail?: DraftSystemTrail;
+        firstDraftNodeId?: string;
+        selectedNodeId?: string;
+        roomStep?: RoomStep;
+        draftChecklists?: Record<string, string>;
+        checklistFeedback?: Record<string, ChecklistFeedbackResponse>;
+        confirmedChecklist?: Record<string, ChecklistItem[]>;
+        logicPlans?: Record<string, MilestonePlanResponse>;
+        code?: string;
+        previewState?: PreviewState;
+        runKey?: number;
+        checkpoints?: Checkpoint[];
+      };
+      if (!parsed.project || parsed.project.systemTrail) {
+        if (parsed.activeStage) setActiveStage(parsed.activeStage);
+        if (typeof parsed.idea === "string") setIdea(parsed.idea);
+        if (parsed.project?.systemTrail) setProject(parsed.project);
+        if (parsed.planningSession) setPlanningSession(parsed.planningSession);
+        if (parsed.goalUnderstanding) setGoalUnderstanding(parsed.goalUnderstanding);
+        if (typeof parsed.understandingDetails === "string") setUnderstandingDetails(parsed.understandingDetails);
+        if (parsed.planningQuestion) setPlanningQuestion(parsed.planningQuestion);
+        if (parsed.draftTrail) setDraftTrail(parsed.draftTrail);
+        if (parsed.firstDraftNodeId) setFirstDraftNodeId(parsed.firstDraftNodeId);
+        if (parsed.selectedNodeId) setSelectedNodeId(parsed.selectedNodeId);
+        if (parsed.roomStep) setRoomStep(parsed.roomStep);
+        if (parsed.draftChecklists) setDraftChecklists(parsed.draftChecklists);
+        if (parsed.checklistFeedback) setChecklistFeedback(parsed.checklistFeedback);
+        if (parsed.confirmedChecklist) setConfirmedChecklist(parsed.confirmedChecklist);
+        if (parsed.logicPlans) setLogicPlans(parsed.logicPlans);
+        if (parsed.code) setCode(parsed.code);
+        if (parsed.previewState) setPreviewState(parsed.previewState);
+        if (typeof parsed.runKey === "number") setRunKey(parsed.runKey);
+        if (parsed.checkpoints) setCheckpoints(parsed.checkpoints);
+      } else {
+        window.localStorage.removeItem(STORAGE_KEY);
+      }
+    } catch {
+      window.localStorage.removeItem(STORAGE_KEY);
+    } finally {
+      setHasLoaded(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!hasLoaded) return;
     window.localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
         activeStage,
         idea,
-        goalInterview,
-        pathMap,
         project,
-        milestones,
-        selectedMilestoneId,
-        activeScaffoldStep,
+        planningSession,
+        goalUnderstanding,
+        understandingDetails,
+        planningQuestion,
+        draftTrail,
+        firstDraftNodeId,
+        selectedNodeId,
+        roomStep,
         draftChecklists,
-        checklistFeedbackByMilestone,
-        confirmedChecklists,
-        checklistChecks,
+        checklistFeedback,
+        confirmedChecklist,
+        logicPlans,
         code,
-        changeSummary,
-        checkpoints,
-        trace
+        previewState,
+        runKey,
+        checkpoints
       })
     );
   }, [
     activeStage,
     idea,
-    goalInterview,
-    pathMap,
     project,
-    milestones,
-    selectedMilestoneId,
-    activeScaffoldStep,
+    planningSession,
+    goalUnderstanding,
+    understandingDetails,
+    planningQuestion,
+    draftTrail,
+    firstDraftNodeId,
+    selectedNodeId,
+    roomStep,
     draftChecklists,
-    checklistFeedbackByMilestone,
-    confirmedChecklists,
-    checklistChecks,
+    checklistFeedback,
+    confirmedChecklist,
+    logicPlans,
     code,
-    changeSummary,
+    previewState,
+    runKey,
     checkpoints,
-    trace,
-    hasLoadedStoredState
+    hasLoaded
   ]);
 
-  useEffect(() => {
-    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-  }, [activeStage, activeScaffoldStep]);
-
-  const selectedMilestone = useMemo(
-    () => milestones.find((milestone) => milestone.id === selectedMilestoneId) ?? milestones[0],
-    [milestones, selectedMilestoneId]
-  );
-  const nextMilestone = nextMilestoneAfter(milestones, selectedMilestone);
-  const selectedMilestoneKey = selectedMilestone?.id ?? "";
-  const draftChecklist = selectedMilestoneKey ? draftChecklists[selectedMilestoneKey] ?? "" : "";
-  const checklistFeedback = selectedMilestoneKey ? checklistFeedbackByMilestone[selectedMilestoneKey] : undefined;
-  const currentChecklist = selectedMilestoneKey ? confirmedChecklists[selectedMilestoneKey] ?? [] : [];
-  const currentChecklistChecks = selectedMilestoneKey ? checklistChecks[selectedMilestoneKey] ?? {} : {};
-  const completedChecklistCount = currentChecklist.filter((item) => currentChecklistChecks[item] === "yes").length;
-  const allChecklistDone = currentChecklist.length > 0 && completedChecklistCount === currentChecklist.length;
-  const firstUncheckedChecklistItem =
-    currentChecklist.find((item) => currentChecklistChecks[item] !== "yes") || currentChecklist[0] || selectedMilestone?.doneChecklist[0];
-  const currentStepIsDone = Boolean(selectedMilestone?.status === "done" || allChecklistDone);
-  const activeCheckpoint = checkpoints[checkpoints.length - 1];
-  const projectTitle = project?.title ?? pathMap?.title ?? "School Quiz Game";
-  const currentSystemCards = systemCardsForMilestone(selectedMilestone?.order);
-
-  const appendAssistantLog = useCallback((message: string) => {
-    setAssistantLog((messages) => [message, ...messages].slice(0, 5));
-  }, []);
-
-  const handleConsole = useCallback((line: string) => {
-    setPreviewState((state) => ({
-      ...state,
-      console: [`[preview] ${line}`, ...state.console].slice(0, 20)
+  const onConsole = useCallback((line: string) => {
+    setPreviewState((current) => ({
+      ...current,
+      console: [`[preview] ${line}`, ...current.console].slice(0, 20)
     }));
   }, []);
 
-  const handlePreviewError = useCallback((message: string) => {
-    setPreviewState((state) => ({
-      ...state,
+  const onPreviewError = useCallback((message: string) => {
+    setPreviewState((current) => ({
+      ...current,
       status: "error",
       error: message,
-      console: [`[error] ${message}`, ...state.console].slice(0, 20)
+      console: [`[error] ${message}`, ...current.console].slice(0, 20)
     }));
-    setActiveStage("preview");
-    setDrawerOpen(true);
-    setDrawerTab("console");
-    appendAssistantLog("The preview found a problem. Pick what is missing, then fix one small thing.");
-    if (selectedMilestone) {
-      setMilestones((items) => updateMilestone(items, selectedMilestone.id, { status: "needs_fix" }));
-    }
-  }, [appendAssistantLog, selectedMilestone]);
+    setActiveStage("debug");
+    setObservedBehavior(message);
+    setAssistantNote("Compare what you wanted with what you saw. Then fix one missing check.");
+    if (project && selectedNode) setProject(updateNode(project, selectedNode.id, { status: "blocked" }));
+  }, [project, selectedNode]);
 
-  function canOpenStage(stage: AppStage): boolean {
-    if (stage === "dashboard") return true;
-    if (stage === "flowchart") return Boolean(goalInterview || project);
-    return Boolean(project);
-  }
-
-  function openStage(stage: AppStage) {
-    if (canOpenStage(stage)) setActiveStage(stage);
-  }
-
-  function handleResetWorkspace() {
-    setActiveStage("dashboard");
-    setIdea(DEFAULT_IDEA);
-    setGoalInterview(null);
-    setPathMap(null);
+  function resetStudio() {
+    setActiveStage("idea");
+    setIdea("");
     setProject(null);
-    setMilestones([]);
-    setSelectedMilestoneId("");
-    setMilestonePlan(null);
-    setActiveScaffoldStep("story");
+    setPlanningSession(null);
+    setGoalUnderstanding(null);
+    setUnderstandingDetails("");
+    setPlanningQuestion(null);
+    setPlanningFreeInput("");
+    setDraftTrail(null);
+    setFirstDraftNodeId("");
+    setNewCandidateTitle("");
+    setNewDraftTitle("");
+    setSelectedNodeId("");
+    setRoomStep("story");
     setDraftChecklists({});
-    setChecklistFeedbackByMilestone({});
-    setConfirmedChecklists({});
-    setChecklistChecks({});
-    setPredictionAnswer(null);
-    setMiniExplain(null);
-    setMiniExplainAnswer(null);
+    setChecklistFeedback({});
+    setConfirmedChecklist({});
+    setLogicPlans({});
     setCode(STARTER_CODE);
-    setChangeSummary([]);
-    setChecklistState({});
     setPreviewState({ status: "idle", runCount: 0, console: [] });
     setRunKey((key) => key + 1);
-    setDrawerOpen(false);
-    setCheckpoints([]);
     setDebugDiagnosis(null);
-    setFailedChecklistItem("");
-    setDraftAnswer("");
-    setDebugSymptom("I do not see that part working yet.");
-    setTrace({
-      projectId: "draft",
-      conceptsTouched: [],
-      bugsFixed: [],
-      miniExplainAnswers: [],
-      decisionsMade: []
-    });
-    setAssistantLog(["Share your idea first. I will help turn it into small steps before we make changes."]);
+    setObservedBehavior("Nothing changed yet.");
+    setMissingCheckId("");
+    setCheckpoints([]);
+    setAssistantNote("Start with your idea. We will make the system visible before building.");
     window.localStorage.removeItem(STORAGE_KEY);
   }
 
-  async function handleStartGoalInterview() {
+  async function createProject() {
+    if (!idea.trim()) return;
     setIsBusy(true);
     setError(null);
     try {
-      const response = await postJson<GoalInterviewResponse>("/api/goal/interview/start", { idea });
-      setGoalInterview(response);
-      setPathMap(response.pathMap);
-      setDraftAnswer("");
-      setChangeSummary(["Goal interview started. The map is drafting, but no code was generated."]);
-      setActiveStage("flowchart");
-      appendAssistantLog(response.assistantMessage);
+      const response = await postJson<PlanningStartResponse>("/api/planning/start", { idea });
+      setProject(response.project);
+      setPlanningSession(response.planningSession);
+      setGoalUnderstanding(response.goalUnderstanding);
+      setPlanningQuestion(response.currentQuestion ?? null);
+      setDraftTrail(null);
+      setFirstDraftNodeId("");
+      setSelectedNodeId("");
+      setCode(response.starterCode || STARTER_CODE);
+      setActiveStage("understanding");
+      setRoomStep("story");
+      setAssistantNote(response.assistantMessage);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Goal interview failed");
+      setError(requestError instanceof Error ? requestError.message : "Could not start co-planning");
     } finally {
       setIsBusy(false);
     }
   }
 
-  async function handleAnswerGoalQuestion(answer: string) {
-    if (!goalInterview?.nextQuestion || !answer.trim()) return;
+  async function confirmUnderstanding(action: "confirm" | "revise" = "confirm") {
+    if (!project || !planningSession) return;
     setIsBusy(true);
     setError(null);
     try {
-      const response = await postJson<GoalInterviewResponse>("/api/goal/interview/answer", {
-        idea,
-        turns: goalInterview.turns,
-        questionId: goalInterview.nextQuestion.id,
-        answer: answer.trim()
-      });
-      setGoalInterview(response);
-      setPathMap(response.pathMap);
-      setDraftAnswer("");
-      setChangeSummary([`Path map updated from answer: ${answer.trim()}`]);
-      setActiveStage("flowchart");
-      appendAssistantLog(response.assistantMessage);
-      setTrace((current) => ({
-        ...current,
-        decisionsMade: mergeUnique(current.decisionsMade, [`Goal interview: ${answer.trim()}`])
-      }));
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Goal answer failed");
-    } finally {
-      setIsBusy(false);
-    }
-  }
-
-  async function handleGeneratePath() {
-    setIsBusy(true);
-    setError(null);
-    try {
-      const response = await postJson<ProjectPathResponse>("/api/project/path", {
-        idea,
-        interviewTurns: goalInterview?.turns ?? [],
-        pathMap
+      const response = await postJson<PlanningUnderstandingResponse>("/api/planning/understanding", {
+        project,
+        session: planningSession,
+        action,
+        extraDetail: understandingDetails
       });
       setProject(response.project);
-      setMilestones(response.milestones);
-      setSelectedMilestoneId(response.project.currentMilestoneId);
-      setPathMap(response.pathMap);
-      setCode(response.starterCode);
-      setMilestonePlan(null);
-      setMiniExplain(null);
-      setChecklistState({});
-      setActiveScaffoldStep("story");
-      setDraftChecklists({});
-      setChecklistFeedbackByMilestone({});
-      setConfirmedChecklists({});
-      setChecklistChecks({});
-      setDrawerOpen(false);
-      setChangeSummary(["Your step map is ready. No code was changed yet."]);
-      setTrace({
-        projectId: response.project.id,
-        conceptsTouched: [],
-        bugsFixed: [],
-        miniExplainAnswers: [],
-        decisionsMade: [
-          `Generated project path: ${response.project.title}`,
-          ...(goalInterview?.turns.map((turn) => `${turn.prompt} ${turn.answer}`) ?? [])
-        ]
-      });
-      setActiveStage("milestones");
-      appendAssistantLog(response.assistantMessage);
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Path generation failed");
-    } finally {
-      setIsBusy(false);
-    }
-  }
-
-  async function handlePlanMilestone() {
-    if (!selectedMilestone) return;
-    if (!currentChecklist.length) {
-      setActiveScaffoldStep("checklist");
-      appendAssistantLog("Write your own checklist first. Then AI can help make it easier to check.");
-      return;
-    }
-    setIsBusy(true);
-    setError(null);
-    try {
-      const response = await postJson<MilestonePlanResponse>("/api/milestone/plan", {
-        milestone: selectedMilestone
-      });
-      setMilestonePlan(response);
-      setPredictionAnswer(null);
-      setMiniExplain(null);
-      setMiniExplainAnswer(null);
-      setActiveScaffoldStep("logic");
-      setMilestones((items) => updateMilestone(items, selectedMilestone.id, { status: "in_progress" }));
-      setActiveStage("milestones");
-      appendAssistantLog(`Now focus only on: ${response.milestone.title}. Use the logic map, then make one change.`);
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Milestone planning failed");
-    } finally {
-      setIsBusy(false);
-    }
-  }
-
-  async function handleReviewChecklist() {
-    if (!selectedMilestone) return;
-    const draftForReview = draftChecklist.trim() || selectedMilestone.doneChecklist.slice(0, 4).join("\n");
-    if (!draftForReview.trim()) return;
-    setIsBusy(true);
-    setError(null);
-    try {
-      if (!draftChecklist.trim()) {
-        setDraftChecklists((items) => ({ ...items, [selectedMilestone.id]: draftForReview }));
+      setPlanningSession(response.planningSession);
+      setGoalUnderstanding(response.goalUnderstanding);
+      setPlanningQuestion(response.currentQuestion ?? null);
+      setAssistantNote(response.assistantMessage);
+      if (action === "confirm") {
+        setUnderstandingDetails("");
+        setActiveStage("coplan");
       }
-      const feedback = await postJson<ChecklistFeedbackResponse>("/api/checklist/review", {
-        milestone: selectedMilestone,
-        draftChecklist: draftForReview
-      });
-      setChecklistFeedbackByMilestone((items) => ({ ...items, [selectedMilestone.id]: feedback }));
-      setActiveScaffoldStep("checklist");
-      appendAssistantLog(feedback.assistantMessage);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Checklist feedback failed");
+      setError(requestError instanceof Error ? requestError.message : "Could not confirm the goal understanding");
     } finally {
       setIsBusy(false);
     }
   }
 
-  async function handleConfirmChecklist(useImproved = true) {
-    if (!selectedMilestone) return;
-    const fallbackItems = parseChecklistText(draftChecklist).length ? parseChecklistText(draftChecklist) : selectedMilestone.doneChecklist.slice(0, 4);
-    const confirmed = (useImproved && checklistFeedback?.improvedChecklist.length ? checklistFeedback.improvedChecklist : fallbackItems).slice(0, 4);
+  async function answerPlanning(answer: string, source: "choice" | "free-input" | "not-sure") {
+    if (!planningSession || !planningQuestion) return;
+    const cleanAnswer = answer.trim();
+    if (!cleanAnswer) return;
+    setIsBusy(true);
+    setError(null);
+    try {
+      const response = await postJson<PlanningAnswerResponse>("/api/planning/answer", {
+        session: planningSession,
+        questionId: planningQuestion.id,
+        answer: cleanAnswer,
+        source
+      });
+      setPlanningSession(response.planningSession);
+      setPlanningQuestion(response.currentQuestion ?? null);
+      setPlanningFreeInput("");
+      setAssistantNote(response.assistantMessage);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Could not save planning answer");
+    } finally {
+      setIsBusy(false);
+    }
+  }
 
-    if (confirmed.length < 2) {
-      setError("Write at least 2 things you can see or test.");
-      setActiveScaffoldStep("checklist");
+  function updateCandidate(partId: string, patch: Partial<CandidateSystemPart>) {
+    setPlanningSession((current) => current
+      ? {
+        ...current,
+        candidateParts: current.candidateParts.map((part) => (part.id === partId ? { ...part, ...patch } : part)),
+        updatedAt: new Date().toISOString()
+      }
+      : current);
+  }
+
+  function moveCandidate(partId: string, direction: -1 | 1) {
+    setPlanningSession((current) => {
+      if (!current) return current;
+      const next = [...current.candidateParts];
+      const index = next.findIndex((part) => part.id === partId);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= next.length) return current;
+      [next[index], next[target]] = [next[target], next[index]];
+      return { ...current, candidateParts: next, updatedAt: new Date().toISOString() };
+    });
+  }
+
+  function addCandidatePart() {
+    const title = newCandidateTitle.trim();
+    if (!title) return;
+    const part: CandidateSystemPart = {
+      id: `candidate-student-${Date.now()}`,
+      title,
+      visibleBehavior: `The user can see or try: ${title}.`,
+      systemRole: "student idea",
+      selected: true,
+      source: "student-created"
+    };
+    setPlanningSession((current) => current
+      ? { ...current, candidateParts: [...current.candidateParts, part], updatedAt: new Date().toISOString() }
+      : current);
+    setNewCandidateTitle("");
+  }
+
+  async function createDraftTrail() {
+    if (!planningSession) return;
+    if (!planningSession.candidateParts.some((part) => part.selected)) {
+      setError("Choose what belongs in your trail first.");
       return;
     }
+    setIsBusy(true);
+    setError(null);
+    try {
+      const response = await postJson<DraftTrailResponse>("/api/planning/draft", { session: planningSession });
+      setPlanningSession(response.planningSession);
+      setDraftTrail(response.draftTrail);
+      setFirstDraftNodeId(response.draftTrail.nodes[0]?.id ?? "");
+      setActiveStage("draft");
+      setAssistantNote(response.assistantMessage);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Could not create draft trail");
+    } finally {
+      setIsBusy(false);
+    }
+  }
 
-    const updatedMilestone: Milestone = {
-      ...selectedMilestone,
-      doneChecklist: confirmed,
-      status: "in_progress"
-    };
-    setConfirmedChecklists((items) => ({ ...items, [selectedMilestone.id]: confirmed }));
-    setChecklistChecks((items) => ({
-      ...items,
-      [selectedMilestone.id]: Object.fromEntries(confirmed.map((item) => [item, "not_yet" as ChecklistCheckStatus]))
-    }));
-    setChecklistState(Object.fromEntries(confirmed.map((item) => [item, false])));
-    setMilestones((items) => updateMilestone(items, selectedMilestone.id, updatedMilestone));
-    setActiveScaffoldStep("logic");
+  function updateDraftNode(nodeId: string, patch: Partial<DraftSystemTrail["nodes"][number]>) {
+    setDraftTrail((current) => current
+      ? {
+        ...current,
+        nodes: current.nodes.map((node) => (node.id === nodeId ? { ...node, ...patch, source: patch.source ?? "student-edited" } : node))
+      }
+      : current);
+  }
 
+  function moveDraftNode(nodeId: string, direction: -1 | 1) {
+    setDraftTrail((current) => {
+      if (!current) return current;
+      const activeNodes = current.nodes.filter((node) => node.status !== "removed");
+      const index = activeNodes.findIndex((node) => node.id === nodeId);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= activeNodes.length) return current;
+      [activeNodes[index], activeNodes[target]] = [activeNodes[target], activeNodes[index]];
+      const nodes = activeNodes.map((node, nextIndex) => ({ ...node, order: nextIndex + 1, source: node.id === nodeId ? "student-edited" as const : node.source }));
+      return {
+        ...current,
+        nodes,
+        edges: nodes.slice(0, -1).map((node, nextIndex) => ({
+          from: node.id,
+          to: nodes[nextIndex + 1].id,
+          type: nextIndex >= 2 ? "feedback-loop" : "sequence"
+        }))
+      };
+    });
+  }
+
+  function addDraftNode() {
+    const title = newDraftTitle.trim();
+    if (!title) return;
+    setDraftTrail((current) => {
+      const nodes = [
+        ...(current?.nodes.filter((node) => node.status !== "removed") ?? []),
+        {
+          id: `draft-node-student-${Date.now()}`,
+          title,
+          visibleBehavior: `The user can see or try: ${title}.`,
+          systemRole: "student idea",
+          order: (current?.nodes.length ?? 0) + 1,
+          status: "draft" as const,
+          source: "student-edited" as const
+        }
+      ].map((node, index) => ({ ...node, order: index + 1 }));
+      return {
+        nodes,
+        edges: nodes.slice(0, -1).map((node, index) => ({
+          from: node.id,
+          to: nodes[index + 1].id,
+          type: index >= 2 ? "feedback-loop" : "sequence"
+        }))
+      };
+    });
+    setNewDraftTitle("");
+  }
+
+  async function reviewDraft() {
+    if (!planningSession || !draftTrail) return;
+    const activeNodes = draftTrail.nodes.filter((node) => node.status !== "removed");
+    if (activeNodes.length < 2) {
+      setError("Keep at least two system parts before confirming.");
+      return;
+    }
+    setIsBusy(true);
+    setError(null);
+    try {
+      const reviewedTrail = {
+        ...draftTrail,
+        nodes: activeNodes.map((node, index) => ({ ...node, order: index + 1 }))
+      };
+      const response = await postJson<DraftTrailResponse>("/api/planning/review", {
+        session: planningSession,
+        draftTrail: reviewedTrail
+      });
+      setPlanningSession(response.planningSession);
+      setDraftTrail(response.draftTrail);
+      setFirstDraftNodeId(response.draftTrail.nodes[0]?.id ?? "");
+      setActiveStage("first");
+      setAssistantNote(response.assistantMessage);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Could not review draft trail");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function confirmFirstMilestone() {
+    if (!project || !planningSession || !draftTrail || !firstDraftNodeId) return;
+    setIsBusy(true);
+    setError(null);
+    try {
+      const response = await postJson<ConfirmedTrailResponse>("/api/planning/confirm", {
+        project,
+        session: planningSession,
+        draftTrail,
+        selectedFirstNodeId: firstDraftNodeId
+      });
+      setProject(response.project);
+      setPlanningSession(response.planningSession);
+      setSelectedNodeId(response.project.currentFocusNodeId ?? response.project.systemTrail.nodes[0]?.id ?? "");
+      setActiveStage("trail");
+      setAssistantNote(response.assistantMessage);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Could not confirm system trail");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  function selectNode(node: SystemNode) {
+    setSelectedNodeId(node.id);
+    setAssistantNote(`Look at this system part: ${node.title}.`);
+  }
+
+  function buildSelectedNode() {
+    if (!project || !selectedNode) return;
+    if (planningSession?.status !== "completed") {
+      setAssistantNote("Let's make the system visible first. You can change the trail before building.");
+      setActiveStage(planningSession?.draftTrail ? "draft" : "coplan");
+      return;
+    }
+    setProject(setCurrentNode(updateNode(project, selectedNode.id, { status: "building" }), selectedNode.id));
+    setSelectedNodeId(selectedNode.id);
+    setRoomStep("story");
+    setActiveStage("room");
+    setAssistantNote("Start with the story, then write your own checks.");
+  }
+
+  async function reviewSelectedChecklist() {
+    if (!selectedNode) return;
+    const draft = selectedDraft.trim();
+    if (!draft) {
+      setError("Write at least two checks first.");
+      return;
+    }
+    setIsBusy(true);
+    setError(null);
+    try {
+      const response = await postJson<ChecklistFeedbackResponse>("/api/checklist/review", {
+        node: selectedNode,
+        draftChecklist: draft
+      });
+      setChecklistFeedback((current) => ({ ...current, [selectedNode.id]: response }));
+      setAssistantNote(response.assistantMessage);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Checklist review failed");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function confirmChecklist(source: "student" | "ai-suggested") {
+    if (!selectedNode) return;
+    const text = source === "ai-suggested" && selectedFeedback?.improvedChecklist.length
+      ? selectedFeedback.improvedChecklist.join("\n")
+      : selectedDraft;
+    const items = checklistItemsFromText(text, source);
+    if (items.length < 2) {
+      setError("Write at least two checks that you can see or test.");
+      return;
+    }
+    setConfirmedChecklist((current) => ({ ...current, [selectedNode.id]: items }));
+    setDraftChecklists((current) => ({ ...current, [selectedNode.id]: text }));
+    setRoomStep("logic");
+    setAssistantNote("Your checks are the target. Now see the logic.");
+  }
+
+  async function createLogicPlan() {
+    if (!selectedNode) return;
+    if (!selectedChecklist.length) {
+      setRoomStep("checks");
+      setAssistantNote("Make your checks first so the logic has a clear target.");
+      return;
+    }
     setIsBusy(true);
     setError(null);
     try {
       const response = await postJson<MilestonePlanResponse>("/api/milestone/plan", {
-        milestone: updatedMilestone
+        node: selectedNode,
+        checklist: selectedChecklist.map((item) => item.text)
       });
-      setMilestonePlan(response);
-      setPredictionAnswer(null);
-      setMiniExplain(null);
-      setMiniExplainAnswer(null);
-      appendAssistantLog("Shared checklist confirmed. Now the logic map can show how the step works.");
+      setLogicPlans((current) => ({ ...current, [selectedNode.id]: response }));
+      setRoomStep("logic");
+      setAssistantNote("The logic chain is ready. Review it, then build one small piece.");
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Logic map failed");
+      setError(requestError instanceof Error ? requestError.message : "Logic plan failed");
     } finally {
       setIsBusy(false);
     }
   }
 
-  async function handleApplyPatch() {
-    if (!selectedMilestone || !project) return;
-    if (!currentChecklist.length) {
-      setActiveScaffoldStep("checklist");
-      appendAssistantLog("Confirm the checklist first so the build has a clear target.");
+  async function buildPatch() {
+    if (!project || !selectedNode) return;
+    if (!selectedChecklist.length) {
+      setRoomStep("checks");
+      setAssistantNote("Confirm your checks before building.");
       return;
     }
     setIsBusy(true);
     setError(null);
     try {
       const patch = await postJson<PatchResponse>("/api/build/patch", {
-        milestone: selectedMilestone,
+        node: selectedNode,
+        checklist: selectedChecklist.map((item) => item.text),
         currentCode: code
       });
-      const nextPreviewState: PreviewState = {
-        ...previewState,
-        status: "idle",
-        error: undefined
-      };
+      const nextPreviewState: PreviewState = { status: "idle", runCount: previewState.runCount, console: [] };
       const checkpoint = await postJson<Checkpoint>("/api/checkpoint/create", {
         projectId: project.id,
-        milestoneId: selectedMilestone.id,
+        nodeId: selectedNode.id,
         name: patch.checkpointName,
         filesSnapshot: { "sketch.js": patch.code },
         previewState: nextPreviewState
       });
       setCode(patch.code);
-      setChangeSummary(patch.changeSummary);
-      setMiniExplain(patch.miniExplainQuestion);
-      setMiniExplainAnswer(null);
-      setCheckpoints((items) => [...items, checkpoint]);
-      setTrace((current) => ({
-        ...current,
-        conceptsTouched: mergeUnique(current.conceptsTouched, patch.learningTraceDelta.conceptsTouched),
-        decisionsMade: mergeUnique(current.decisionsMade, patch.learningTraceDelta.decisionsMade)
-      }));
-      setDrawerTab("changes");
-      setDrawerOpen(true);
-      setActiveScaffoldStep("preview");
-      appendAssistantLog("One small change is ready. Run the preview, then check what you can see.");
+      setPreviewState(nextPreviewState);
+      setCheckpoints((current) => [...current, checkpoint]);
+      setProject(updateNode(project, selectedNode.id, { status: "building" }));
+      setRoomStep("preview");
+      setActiveStage("preview");
+      setRunKey((key) => key + 1);
+      setAssistantNote("One small build is ready. Run it, then check your list by hand.");
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Patch failed");
+      setError(requestError instanceof Error ? requestError.message : "Build failed");
     } finally {
       setIsBusy(false);
     }
   }
 
-  async function handleRunPreview() {
+  async function runPreview() {
     setIsBusy(true);
     setError(null);
     try {
@@ -742,15 +841,15 @@ export function BuildCompanionWorkspace() {
         code,
         runCount: previewState.runCount
       });
-      setPreviewState((state) => ({
-        ...state,
+      setPreviewState((current) => ({
+        ...current,
         ...response,
-        console: [...response.console, ...state.console].slice(0, 20)
+        console: [...response.console, ...current.console].slice(0, 20)
       }));
       setRunKey((key) => key + 1);
-      setDrawerTab("console");
-      setActiveScaffoldStep("preview");
-      appendAssistantLog("Preview ran. Look at the app first, then check the boxes you can see.");
+      setActiveStage("preview");
+      setRoomStep("preview");
+      setAssistantNote("Now check what you can see. You decide yes, not yet, or not sure.");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Preview failed");
     } finally {
@@ -758,41 +857,69 @@ export function BuildCompanionWorkspace() {
     }
   }
 
-  async function handleDiagnoseDebug() {
-    if (!selectedMilestone) return;
+  function setCheckStatus(itemId: string, status: Exclude<ChecklistStatus, "unchecked">) {
+    if (!selectedNode) return;
+    setConfirmedChecklist((current) => ({
+      ...current,
+      [selectedNode.id]: (current[selectedNode.id] ?? []).map((item) => (item.id === itemId ? { ...item, status } : item))
+    }));
+    if (status !== "yes") {
+      const item = selectedChecklist.find((candidate) => candidate.id === itemId);
+      setMissingCheckId(itemId);
+      setObservedBehavior(item ? `I do not see this yet: ${item.text}` : "I do not see it yet.");
+      setAssistantNote("That is a useful observation. The Mismatch Lens can help.");
+    }
+  }
+
+  async function diagnoseMismatch() {
+    if (!selectedNode) return;
     setIsBusy(true);
     setError(null);
     try {
       const diagnosis = await postJson<DebugDiagnosisResponse>("/api/debug/diagnose", {
-        visibleBehavior: debugSymptom,
-        failedChecklistItem: failedChecklistItem || firstUncheckedChecklistItem,
-        milestone: selectedMilestone
+        node: selectedNode,
+        visibleBehavior: observedBehavior,
+        failedChecklistItem: missingCheck?.text
       });
       setDebugDiagnosis(diagnosis);
-      setActiveStage("preview");
-      setActiveScaffoldStep("preview");
-      setMilestones((items) => updateMilestone(items, selectedMilestone.id, { status: "needs_fix" }));
-      appendAssistantLog("Debug from what you see: pick what is missing, then try the smallest fix.");
+      setActiveStage("debug");
+      setAssistantNote("Try one small fix for the missing check.");
+      if (project) setProject(updateNode(project, selectedNode.id, { status: "blocked" }));
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Debug diagnosis failed");
+      setError(requestError instanceof Error ? requestError.message : "Debug failed");
     } finally {
       setIsBusy(false);
     }
   }
 
-  async function handleRollback(checkpoint: Checkpoint) {
+  function completeCurrentNode() {
+    if (!project || !selectedNode) return;
+    const next = nextNodeAfter(project, selectedNode);
+    let updated = updateNode(project, selectedNode.id, { status: "completed" });
+    if (next) {
+      updated = updateNode(updated, next.id, { status: "current" });
+      updated.currentFocusNodeId = next.id;
+    } else {
+      updated.status = "complete";
+    }
+    setProject(updated);
+    setActiveStage("growth");
+    setRoomStep("changed");
+    setAssistantNote("Your system grew. Look at what this step added.");
+  }
+
+  async function rollbackLatest() {
+    const checkpoint = checkpoints[checkpoints.length - 1];
+    if (!checkpoint) return;
     setIsBusy(true);
-    setError(null);
     try {
       const restored = await postJson<{ restoredCode: string; previewState: PreviewState }>("/api/checkpoint/rollback", {
         checkpoint
       });
       setCode(restored.restoredCode);
       setPreviewState(restored.previewState);
-      setChangeSummary([`Rolled back to: ${checkpoint.name}`]);
-      setDrawerTab("history");
-      setDrawerOpen(true);
-      appendAssistantLog(`Rolled back to: ${checkpoint.name}. Run the preview again to confirm.`);
+      setRunKey((key) => key + 1);
+      setAssistantNote(`Rolled back to ${checkpoint.name}.`);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Rollback failed");
     } finally {
@@ -800,1607 +927,1146 @@ export function BuildCompanionWorkspace() {
     }
   }
 
-  function handleChecklistToggle(item: string) {
-    const next = checklistState[item] ? "not_yet" : "yes";
-    handleChecklistStatus(item, next);
+  function canOpen(stage: StudioStage) {
+    if (stage === "idea") return true;
+    if (stage === "understanding") return Boolean(project && planningSession && goalUnderstanding && planningSession.status !== "completed");
+    if (stage === "coplan") return Boolean(project && planningSession && planningSession.status !== "completed" && planningSession.status !== "goal_understanding_generated");
+    if (stage === "draft") return Boolean(planningSession && draftTrail && planningSession.status !== "completed");
+    if (stage === "first") return Boolean(planningSession && draftTrail && planningSession.status === "draft_trail_reviewed");
+    if (stage === "trail") return Boolean(project?.systemTrail.nodes.length && planningSession?.status === "completed");
+    if (stage === "room") return Boolean(project && selectedNode);
+    if (stage === "preview") return Boolean(project && selectedChecklist.length);
+    if (stage === "debug") return Boolean(project && selectedChecklist.length);
+    return Boolean(project && selectedNode);
   }
 
-  function handleChecklistStatus(item: string, status: ChecklistCheckStatus) {
-    if (!selectedMilestone) return;
-    setChecklistChecks((state) => ({
-      ...state,
-      [selectedMilestone.id]: {
-        ...(state[selectedMilestone.id] ?? {}),
-        [item]: status
-      }
-    }));
-    setChecklistState((state) => ({ ...state, [item]: status === "yes" }));
-    if (status !== "yes") {
-      setFailedChecklistItem(item);
-      setDebugSymptom(status === "unsure" ? `I am not sure if this happened: ${grade3Copy(item)}` : `I do not see this yet: ${grade3Copy(item)}`);
-    }
-  }
-
-  function handleCompleteMilestone() {
-    if (!selectedMilestone) return;
-    setMilestones((items) => updateMilestone(items, selectedMilestone.id, { status: "done" }));
-    setActiveScaffoldStep("explain");
-    setActiveStage("preview");
-    appendAssistantLog("Step marked done. Look at what changed in your system, then choose the next small step.");
-  }
-
-  function handleMiniExplainAnswer(optionIndex: number) {
-    if (!miniExplain) return;
-    setMiniExplainAnswer(optionIndex);
-    const answer = miniExplain.options[optionIndex];
-    setTrace((current) => ({
-      ...current,
-      miniExplainAnswers: mergeUnique(current.miniExplainAnswers, [answer])
-    }));
-    setActiveScaffoldStep("explain");
-    appendAssistantLog(optionIndex === miniExplain.correctIndex ? "Right. That is enough explanation for this step." : "Close. Keep watching how the preview changes.");
-  }
-
-  function handleSelectNextMilestone() {
-    if (!selectedMilestone) return;
-    const next = nextMilestoneAfter(milestones, selectedMilestone);
-    if (!next) {
-      if (project) setProject({ ...project, status: "complete" });
-      appendAssistantLog("The small version is connected. You can polish it next.");
-      return;
-    }
-
-    setSelectedMilestoneId(next.id);
-    setMilestonePlan(null);
-    setPredictionAnswer(null);
-    setMiniExplain(null);
-    setMiniExplainAnswer(null);
-    setDebugDiagnosis(null);
-    setFailedChecklistItem("");
-    setChecklistState({});
-    setActiveScaffoldStep("story");
-    setActiveStage("milestones");
-    appendAssistantLog(`Next step: ${next.title}. Plan it, then check what you can see.`);
-  }
-
-  function handleSelectMilestone(milestone: Milestone) {
-    setSelectedMilestoneId(milestone.id);
-    setMilestonePlan(null);
-    setPredictionAnswer(null);
-    setMiniExplain(null);
-    setMiniExplainAnswer(null);
-    setDebugDiagnosis(null);
-    setChecklistState({});
-    setActiveScaffoldStep("story");
-    setActiveStage("milestones");
-  }
-
-  function renderToolDrawer() {
-    const tabs: Array<{ id: DrawerTab; label: string; icon: typeof ListChecks }> = [
-      { id: "changes", label: "Changes", icon: ListChecks },
-      { id: "code", label: "Code", icon: Code2 },
-      { id: "console", label: "Messages", icon: ChevronDown },
-      { id: "history", label: "Saved steps", icon: RotateCcw }
+  function renderAppBar() {
+    const projectTitle = t(project?.title ?? "Open idea");
+    const chips: Array<{ stage: StudioStage; label: string; icon: typeof Home }> = [
+      { stage: "idea", label: "Idea", icon: Lightbulb },
+      { stage: "understanding", label: "Understand", icon: Target },
+      { stage: "coplan", label: "Co-plan", icon: Sparkles },
+      { stage: "draft", label: "Review", icon: Pencil },
+      { stage: "trail", label: "System Trail", icon: Workflow },
+      { stage: "room", label: "Milestone Room", icon: Flag },
+      { stage: "preview", label: "Preview", icon: Monitor },
+      { stage: "growth", label: "Growth", icon: Sparkles }
     ];
 
     return (
-      <section className={`tool-drawer ${drawerOpen ? "open" : ""}`}>
-        <div className="drawer-tabs">
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
+      <header className="open-appbar">
+        <button className="open-brand" type="button" onClick={() => setActiveStage(project ? (canOpen("trail") ? "trail" : canOpen("coplan") ? "coplan" : "understanding") : "idea")}>
+          <span aria-hidden="true"><i /><i /><i /></span>
+          <strong>{t("Goal-to-Milestone")}</strong>
+        </button>
+        <div className="open-breadcrumb">
+          <button type="button" onClick={() => setActiveStage("idea")}>{t("My Projects")}</button>
+          <span>/</span>
+          <button type="button" onClick={() => project && setActiveStage(canOpen("trail") ? "trail" : canOpen("coplan") ? "coplan" : "understanding")}>{projectTitle}</button>
+          <Pencil size={16} />
+          <small><CheckCircle2 size={14} /> {t("All changes saved")}</small>
+        </div>
+        <nav className="open-stage-nav" aria-label={isZh ? "工作阶段" : "Studio stages"}>
+          {chips.map((chip) => {
+            const Icon = chip.icon;
             return (
               <button
-                className={drawerTab === tab.id ? "active" : ""}
+                key={chip.stage}
                 type="button"
-                key={tab.id}
-                onClick={() => {
-                  setDrawerTab(tab.id);
-                  setDrawerOpen(true);
-                }}
+                className={activeStage === chip.stage ? "active" : ""}
+                disabled={!canOpen(chip.stage)}
+                onClick={() => setActiveStage(chip.stage)}
               >
                 <Icon size={15} />
-                {tab.label}
+                {t(chip.label)}
               </button>
             );
           })}
-          <button className="drawer-toggle" type="button" onClick={() => setDrawerOpen((open) => !open)}>
-            {drawerOpen ? "Hide" : "Show details"}
+        </nav>
+        <div className="open-actions">
+          <span><Cloud size={17} /> {t("Saved just now")}</span>
+          <button type="button"><CircleHelp size={17} /> {t("Help")}</button>
+          <button
+            className="language-toggle"
+            type="button"
+            aria-label={t("Language")}
+            title={t("Language")}
+            onClick={() => setUiLanguage((language) => (language === "zh" ? "en" : "zh"))}
+          >
+            {languageLabel(uiLanguage)}
           </button>
+          <button type="button" onClick={resetStudio} title={t("New project")}><RefreshCcw size={17} /></button>
+          <button type="button" onClick={rollbackLatest} disabled={!checkpoints.length} title={t("Rollback")}><RotateCcw size={17} /></button>
+          <b>{isZh ? "我" : "A"}</b>
+          <ChevronDown size={17} />
         </div>
-        {drawerOpen && (
-          <div className="drawer-content">
-            {drawerTab === "changes" && (
-              <ul className="summary-list">
-                {changeSummary.length ? changeSummary.map((item) => <li key={item}>{grade3Copy(item)}</li>) : <li>No changes yet.</li>}
-              </ul>
-            )}
-            {drawerTab === "code" && <pre className="code-block">{code}</pre>}
-            {drawerTab === "console" && (
-              <pre className="console-block">{previewState.console.length ? previewState.console.join("\n") : "Preview messages will appear after you run it."}</pre>
-            )}
-            {drawerTab === "history" && (
-              <div className="history-list">
-                {checkpoints.length === 0 ? (
-                  <p className="muted">No saved step yet.</p>
-                ) : (
-                  checkpoints.map((checkpoint) => (
-                    <div className="history-row" key={checkpoint.id}>
-                      <div>
-                        <strong>{checkpoint.name}</strong>
-                        <span>{new Date(checkpoint.createdAt).toLocaleString()}</span>
-                      </div>
-                      <button className="secondary-button compact" type="button" onClick={() => handleRollback(checkpoint)}>
-                        <RotateCcw size={15} />
-                        Roll back
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-        )}
-      </section>
+      </header>
     );
   }
 
-  function milestoneIconForOrder(order?: number) {
-    if (order === 1) return Play;
-    if (order === 2) return CircleHelp;
-    if (order === 3) return MessageCircle;
-    if (order === 4) return Trophy;
-    if (order === 5) return ListChecks;
-    return Workflow;
-  }
-
-  function trailItems(): TrailItem[] {
-    if (milestones.length) {
-      return milestones.map((milestone) => ({
-        id: milestone.id,
-        order: milestone.order,
-        title: milestone.title,
-        detail: grade3Copy(milestone.visibleOutput),
-        status: milestone.status,
-        icon: milestoneIconForOrder(milestone.order)
-      }));
-    }
-
-    const fallback = [
-      { title: "Start screen", detail: "Create the welcome or start screen." },
-      { title: "One question", detail: "Add a question and multiple choices." },
-      { title: "Answer feedback", detail: "Show feedback when a player answers." },
-      { title: "Score", detail: "Keep track of correct answers." },
-      { title: "More questions", detail: "Add new questions to keep the game going." }
-    ];
-
-    return fallback.map((item, index) => ({
-      id: `trail-${index + 1}`,
-      order: index + 1,
-      title: item.title,
-      detail: item.detail,
-      status: index < Math.max(1, pathMap?.confidence ? Math.round(pathMap.confidence * 3) : 1) ? "known" : "open",
-      icon: milestoneIconForOrder(index + 1)
-    }));
-  }
-
-  function currentFocusLabel() {
-    if (activeStage === "preview" && !currentStepIsDone) return "Mismatch Lens";
-    if (activeStage === "preview" && currentStepIsDone) return "Feedback";
-    if (activeScaffoldStep === "logic" || activeScaffoldStep === "build" || activeScaffoldStep === "preview") return "Logic + Preview";
-    return selectedMilestone?.title ?? "Feedback";
-  }
-
-  function renderProjectSideCard(options?: { updated?: boolean }) {
-    const progress = selectedMilestone?.order ?? Math.min(3, Math.max(1, trailItems().filter((item) => item.status === "done" || item.status === "known").length));
-
+  function QuietAICard({ children, action }: { children: ReactNode; action?: { label: string; onClick: () => void } }) {
     return (
-      <aside className="system-project-card">
-        <span className="project-orb">
-          <Gamepad2 size={38} />
-        </span>
-        <div className="project-name-row">
-          <h2>{projectTitle}</h2>
-          <Pencil size={18} />
-        </div>
-        <p>A quiz game about my school.</p>
-        <hr />
-        <span className="project-field-label">Current focus</span>
-        <div className="focus-chip">
-          <span />
-          {currentFocusLabel()}
-        </div>
-        <div className="progress-row">
-          <span>Progress</span>
-          <strong>{progress} of 5</strong>
-        </div>
-        <div className="project-progress-bar">
-          <i style={{ width: `${Math.min(100, (progress / 5) * 100)}%` }} />
-        </div>
-        <hr />
-        <div className="project-date-row">
-          <CalendarIcon />
-          {options?.updated ? "Updated just now" : "Created today"}
+      <aside className="quiet-ai">
+        <span><Sparkles size={22} /></span>
+        <div>
+          <small>{isZh ? "安静 AI" : "Quiet AI"}</small>
+          <p>{typeof children === "string" ? t(children) : children}</p>
+          {action && (
+            <button type="button" onClick={action.onClick}>
+              {t(action.label)}
+            </button>
+          )}
         </div>
       </aside>
     );
   }
 
-  function CalendarIcon() {
+  function renderIdeaStudio() {
     return (
-      <span aria-hidden="true" className="calendar-glyph">
-        □
-      </span>
+      <section className="idea-studio">
+        <div className="idea-hero">
+          <span className="step-pill">{t("Open-ended start")}</span>
+          <h1>{t("What do you want to make happen?")}</h1>
+          <p>{t("Start with any personally meaningful idea. We will turn it into a visible system trail before building.")}</p>
+          <label className="idea-input-card">
+            <span>{t("Your project idea")}</span>
+            <textarea
+              value={idea}
+              onChange={(event) => setIdea(event.target.value)}
+              placeholder={t("I want to make a pet adventure game...")}
+              maxLength={500}
+              aria-label={t("Project idea")}
+            />
+          </label>
+          <button className="open-primary big" type="button" onClick={createProject} disabled={isBusy || !idea.trim()}>
+            <Sparkles size={20} />
+            {t("Start co-planning")}
+            <ArrowRight size={20} />
+          </button>
+        </div>
+
+        <section className="idea-examples" aria-label={t("Optional starters")}>
+          <div>
+            <h2>{t("Optional starters")}</h2>
+            <p>{t("Pick one only if you want a quick seed. Your own idea can be anything.")}</p>
+          </div>
+          <div className="starter-grid-open">
+            {starterIdeas.map((starter) => {
+              const Icon = starter.icon;
+              return (
+                <button key={starter.title} type="button" onClick={() => setIdea(isZh ? t(starter.idea) : starter.idea)}>
+                  <Icon size={24} />
+                  <strong>{t(starter.title)}</strong>
+                  <span>{t(starter.detail)}</span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        <aside className="idea-side-note">
+          <QuietAICard>First we make the system visible. Code waits until you choose one small part and write your checks.</QuietAICard>
+          <div className="studio-principles">
+            <span><Target size={18} /> {t("My idea stays visible")}</span>
+            <span><Workflow size={18} /> {t("I can see the system")}</span>
+            <span><ListChecks size={18} /> {t("I choose how to check it")}</span>
+          </div>
+        </aside>
+      </section>
     );
   }
 
-  function renderQuietAiCard(message: string, detail?: string, action?: { label: string; onClick: () => void }) {
+  function renderGoalUnderstanding() {
+    if (!project || !planningSession || !goalUnderstanding) return renderIdeaStudio();
+    const noticed = [
+      { label: "Object", value: goalUnderstanding.primaryObject },
+      { label: "Change", value: goalUnderstanding.desiredChange },
+      { label: "Result", value: goalUnderstanding.likelyOutput }
+    ];
+
     return (
-      <section className="quiet-ai-card">
-        <span>
-          <Sparkles size={24} />
-        </span>
+      <section className="understanding-screen">
+        <aside className="coplan-idea-card">
+          <span><Lightbulb size={20} /></span>
+          <h2>{t("Your idea")}</h2>
+          <p>{project.originalIdea}</p>
+          <hr />
+          <small>{t("Internal lens")}</small>
+          <strong>{t(goalUnderstanding.planningLens.replace(/-/g, " "))}</strong>
+          <small>{t("Not a template choice")}</small>
+        </aside>
+
+        <main className="understanding-main">
+          <header className="screen-heading">
+            <span className="step-pill">{t("Goal understanding")}</span>
+            <h1>{t("I think you want to make:")}</h1>
+            <p>{t("Check if this feels right before we ask planning questions.")}</p>
+          </header>
+
+          <section className="understanding-card">
+            <div className="understanding-title-row">
+              <span><Target size={24} /></span>
+              <div>
+                <h2>{t(goalUnderstanding.projectTitle)}</h2>
+                <p>{t(goalUnderstanding.learnerFacingRestatement)}</p>
+              </div>
+            </div>
+
+            <div className="understanding-slots" aria-label={isZh ? "系统注意到的内容" : "What the system noticed"}>
+              {noticed.map((item) => (
+                <article key={item.label}>
+                  <small>{t(item.label)}</small>
+                  <strong>{t(item.value || "Not sure yet")}</strong>
+                </article>
+              ))}
+            </div>
+
+            {!!goalUnderstanding.safetyOrBoundaryNotes.length && (
+              <p className="boundary-note-open">
+                <Lightbulb size={17} />
+                {t(goalUnderstanding.safetyOrBoundaryNotes[0])}
+              </p>
+            )}
+
+            {goalUnderstanding.confidence === "low" && (
+              <div className="understanding-clarify">
+                <strong>{t("I’m not fully sure yet.")}</strong>
+                <p>{t("What is the main thing your project works with?")}</p>
+                <div>
+                  {["A picture, drawing, or design", "A character or game object", "Tasks, items, or a list"].map((choice) => (
+                    <button key={choice} type="button" onClick={() => setUnderstandingDetails(choice)}>
+                      {t(choice)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <label className="understanding-detail-input">
+              <span>{t("Change this or add more details")}</span>
+              <textarea
+                value={understandingDetails}
+                onChange={(event) => setUnderstandingDetails(event.target.value)}
+                placeholder={t("For example: users upload a drawing and choose anime style...")}
+                maxLength={360}
+              />
+            </label>
+
+            <div className="understanding-actions">
+              <button className="open-primary big" type="button" onClick={() => confirmUnderstanding("confirm")} disabled={isBusy}>
+                {t("Yes, start planning")}
+                <ArrowRight size={19} />
+              </button>
+              <button className="open-secondary" type="button" onClick={() => confirmUnderstanding("revise")} disabled={isBusy || !understandingDetails.trim()}>
+                {t("Change this")}
+              </button>
+              <button className="open-secondary quiet" type="button" onClick={() => setUnderstandingDetails(`${understandingDetails}${understandingDetails ? " " : ""}I want to add more detail.`)}>
+                {t("Add more details")}
+              </button>
+            </div>
+          </section>
+        </main>
+
+        <aside className="coplan-preview-panel">
+          <span className="draft-badge">{t("Before co-planning")}</span>
+          <h2>{t("Question plan")}</h2>
+          <ol>
+            {goalUnderstanding.recommendedCoPlanningStrategy.questionSequence.map((question, index) => (
+              <li key={question}>
+                <span>{index + 1}</span>
+                <p>{t(question)}</p>
+              </li>
+            ))}
+          </ol>
+          <QuietAICard>{t(goalUnderstanding.quietAI)}</QuietAICard>
+        </aside>
+      </section>
+    );
+  }
+
+  function renderDraftPreviewCard() {
+    const previewNodes = planningPreviewNodes(planningSession);
+    return (
+      <aside className="coplan-preview-panel">
+        <span className="draft-badge">{t("Not final yet")}</span>
+        <h2>{t("Draft trail so far")}</h2>
+        {previewNodes.length ? (
+          <ol>
+            {previewNodes.map((node, index) => (
+              <li key={`${node}-${index}`}>
+                <span>{index + 1}</span>
+                <p>{t(node)}</p>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <div className="empty-draft-preview">
+            <Workflow size={34} />
+            <p>{t("Draft trail will appear here as you answer.")}</p>
+          </div>
+        )}
+        <QuietAICard>The canvas comes later. This is a draft you help shape.</QuietAICard>
+      </aside>
+    );
+  }
+
+  function renderPlanningChoice(choice: PlanningChoice) {
+    return (
+      <button key={choice.id} type="button" onClick={() => answerPlanning(choice.label, "choice")} disabled={isBusy}>
+        <strong>{t(choice.label)}</strong>
+        {(choice.detail || choice.visibleBehavior) && <small>{t(choice.detail || choice.visibleBehavior)}</small>}
+        <ArrowRight size={16} />
+      </button>
+    );
+  }
+
+  function renderPlanningQuestion() {
+    if (!planningQuestion) return null;
+
+    return (
+      <section className="coplan-question-card">
+        <span className="step-pill">{t("Co-planning question")}</span>
+        <h1>{t(planningQuestion.prompt)}</h1>
+        {planningQuestion.boundaryNote && (
+          <p className="boundary-note-open">
+            <Lightbulb size={17} />
+            {t(planningQuestion.boundaryNote)}
+          </p>
+        )}
+        {!!planningQuestion.choices.length && (
+          <div className="planning-choice-grid">
+            {planningQuestion.choices.map(renderPlanningChoice)}
+          </div>
+        )}
+        <div className="planning-free-row">
+          <input
+            value={planningFreeInput}
+            onChange={(event) => setPlanningFreeInput(event.target.value)}
+            placeholder={t("Type my own...")}
+            aria-label={t("Type my own planning answer")}
+          />
+          <button className="open-secondary" type="button" onClick={() => answerPlanning(planningFreeInput, "free-input")} disabled={isBusy || !planningFreeInput.trim()}>
+            {t("Add mine")}
+          </button>
+          <button className="open-secondary quiet" type="button" onClick={() => answerPlanning("I'm not sure yet", "not-sure")} disabled={isBusy}>
+            {t("I'm not sure")}
+          </button>
+        </div>
+        <QuietAICard>{t(planningQuestion.quietAiNote)}</QuietAICard>
+      </section>
+    );
+  }
+
+  function renderCandidateParts() {
+    if (!planningSession) return null;
+    return (
+      <section className="coplan-question-card candidate-parts-card">
+        <span className="step-pill">{t("Choose what belongs in your trail")}</span>
+        <h1>{t("Which parts should be in your system trail?")}</h1>
+        <p>{t("Select, rename, add, or reorder. This is still a draft.")}</p>
+        <div className="candidate-list-open">
+          {planningSession.candidateParts.map((part, index) => (
+            <article key={part.id} className={part.selected ? "selected" : ""}>
+              <button type="button" className="candidate-check" onClick={() => updateCandidate(part.id, { selected: !part.selected })}>
+                {part.selected ? <Check size={18} /> : index + 1}
+              </button>
+              <input
+                value={t(part.title)}
+                onChange={(event) => updateCandidate(part.id, { title: event.target.value, source: part.source === "student-created" ? "student-created" : "student-edited" })}
+                aria-label={isZh ? `重命名 ${t(part.title)}` : `Rename ${part.title}`}
+              />
+              <small>{t(candidateSourceLabel(part.source))}</small>
+              <div>
+                <button type="button" onClick={() => moveCandidate(part.id, -1)} disabled={index === 0}>{isZh ? "上移" : "Up"}</button>
+                <button type="button" onClick={() => moveCandidate(part.id, 1)} disabled={index === planningSession.candidateParts.length - 1}>{isZh ? "下移" : "Down"}</button>
+              </div>
+            </article>
+          ))}
+        </div>
+        <div className="planning-free-row">
+          <input value={newCandidateTitle} onChange={(event) => setNewCandidateTitle(event.target.value)} placeholder={t("Add my own system part...")} />
+          <button className="open-secondary" type="button" onClick={addCandidatePart} disabled={!newCandidateTitle.trim()}>
+            <Plus size={16} />
+            {t("Add part")}
+          </button>
+        </div>
+        <button className="open-primary big" type="button" onClick={createDraftTrail} disabled={isBusy || !planningSession.candidateParts.some((part) => part.selected)}>
+          {t("Review draft trail")}
+          <ArrowRight size={19} />
+        </button>
+      </section>
+    );
+  }
+
+  function renderCoPlanningStudio() {
+    if (!project || !planningSession) return renderIdeaStudio();
+    const hasCandidates = planningSession.candidateParts.length > 0 && planningSession.status === "system_response_clarified";
+
+    return (
+      <section className="coplan-screen">
+        <aside className="coplan-idea-card">
+          <span><Lightbulb size={20} /></span>
+          <h2>{t("Your idea")}</h2>
+          <p>{project.originalIdea}</p>
+          <hr />
+          <small>{t("We are co-planning first.")}</small>
+          <strong>{t("No final canvas yet")}</strong>
+        </aside>
+        <main className="coplan-main">
+          <header className="screen-heading">
+            <h1>{t("Let’s build your system trail together.")}</h1>
+            <p>{t("Answer a few quick questions. You can choose an option or type your own.")}</p>
+          </header>
+          {hasCandidates ? renderCandidateParts() : renderPlanningQuestion()}
+        </main>
+        {renderDraftPreviewCard()}
+      </section>
+    );
+  }
+
+  function renderDraftTrailReview() {
+    if (!draftTrail) return renderCoPlanningStudio();
+    const activeNodes = draftTrail.nodes.filter((node) => node.status !== "removed");
+    return (
+      <section className="draft-review-screen">
+        <aside className="coplan-idea-card">
+          <span><Pencil size={20} /></span>
+          <h2>{t("Review first")}</h2>
+          <p>{project?.originalIdea}</p>
+          <hr />
+          <small>{t("System Trail Canvas is not generated for you.")}</small>
+          <strong>{t("You confirm the system.")}</strong>
+        </aside>
+        <main className="draft-review-main">
+          <header className="screen-heading">
+            <h1>{t("Review your draft system trail")}</h1>
+            <p>{t("This is a first version. You can change it before building.")}</p>
+          </header>
+          <div className="draft-node-list-open">
+            {activeNodes.map((node, index) => (
+              <article key={node.id}>
+                <span>{index + 1}</span>
+                <div>
+                  <input
+                    value={t(node.title)}
+                    onChange={(event) => updateDraftNode(node.id, { title: event.target.value, source: "student-edited" })}
+                    aria-label={isZh ? `重命名 ${t(node.title)}` : `Rename ${node.title}`}
+                  />
+                  <p>{t(node.visibleBehavior)}</p>
+                  <small>{t(draftSourceLabel(node.source))}</small>
+                </div>
+                <div>
+                  <button type="button" onClick={() => moveDraftNode(node.id, -1)} disabled={index === 0}>{isZh ? "上移" : "Move up"}</button>
+                  <button type="button" onClick={() => moveDraftNode(node.id, 1)} disabled={index === activeNodes.length - 1}>{isZh ? "下移" : "Move down"}</button>
+                  <button type="button" onClick={() => updateDraftNode(node.id, { status: "removed", source: "student-edited" })}>{isZh ? "移除" : "Remove"}</button>
+                </div>
+              </article>
+            ))}
+          </div>
+          <div className="planning-free-row">
+            <input value={newDraftTitle} onChange={(event) => setNewDraftTitle(event.target.value)} placeholder={t("Add another visible part...")} />
+            <button className="open-secondary" type="button" onClick={addDraftNode} disabled={!newDraftTitle.trim()}>
+              <Plus size={16} />
+              {t("Add part")}
+            </button>
+          </div>
+          <button className="open-primary big" type="button" onClick={reviewDraft} disabled={isBusy || activeNodes.length < 2}>
+            {t("Confirm trail")}
+            <ArrowRight size={20} />
+          </button>
+        </main>
+        <aside className="coplan-preview-panel">
+          <span className="draft-badge">{t("Draft review")}</span>
+          <h2>{t("Source labels")}</h2>
+          <div className="source-label-stack">
+            <span>{t("AI suggested")}</span>
+            <span>{t("You edited")}</span>
+            <span>{t("You chose")}</span>
+          </div>
+          <QuietAICard>Confirming is part of the thinking. You can still change it later.</QuietAICard>
+        </aside>
+      </section>
+    );
+  }
+
+  function renderFirstMilestoneChoice() {
+    if (!draftTrail) return renderDraftTrailReview();
+    const activeNodes = draftTrail.nodes.filter((node) => node.status !== "removed");
+    return (
+      <section className="first-milestone-screen">
+        <main className="first-milestone-main">
+          <header className="screen-heading">
+            <span className="step-pill">{t("First bounded milestone")}</span>
+            <h1>{t("Which part should we build first?")}</h1>
+            <p>{t("Choose one part from the trail you reviewed. Coding still waits until you write your checks.")}</p>
+          </header>
+          <div className="first-node-grid-open">
+            {activeNodes.map((node) => (
+              <button
+                key={node.id}
+                type="button"
+                className={firstDraftNodeId === node.id ? "active" : ""}
+                onClick={() => setFirstDraftNodeId(node.id)}
+              >
+                <span>{node.order}</span>
+                <strong>{t(node.title)}</strong>
+                <small>{t(node.visibleBehavior)}</small>
+              </button>
+            ))}
+          </div>
+          <button className="open-primary big" type="button" onClick={confirmFirstMilestone} disabled={isBusy || !firstDraftNodeId}>
+            {t("Confirm first build step")}
+            <ArrowRight size={20} />
+          </button>
+        </main>
+        <aside className="coplan-preview-panel">
+          <span className="draft-badge">{t("Almost final")}</span>
+          <h2>{t("What happens next?")}</h2>
+          <ol>
+            <li><span>1</span><p>{t("Confirmed System Trail Canvas appears.")}</p></li>
+            <li><span>2</span><p>{t("You open one Milestone Room.")}</p></li>
+            <li><span>3</span><p>{t("You write checks before build.")}</p></li>
+          </ol>
+          <QuietAICard>Let’s make the system visible first. You can change the trail before building.</QuietAICard>
+        </aside>
+      </section>
+    );
+  }
+
+  function renderProjectRail() {
+    const progressTotal = project?.systemTrail.nodes.length ?? 0;
+    const Icon = nodeIcon(selectedNode);
+    return (
+      <aside className="project-rail">
+        <span className="project-orb-open"><Icon size={36} /></span>
+        <h2>{t(project?.title ?? "No project yet")}</h2>
+        <p>{t(project?.shortDescription ?? "Start with an idea to make a system trail.")}</p>
+        <hr />
+        <small>{t("Current focus")}</small>
+        <strong className="focus-chip-open">
+          <span />
+          {t(selectedNode?.title ?? "Idea")}
+        </strong>
+        <div className="progress-line">
+          <span>{t("Progress")}</span>
+          <b>{isZh ? `${completedCount} / ${progressTotal}` : `${completedCount} of ${progressTotal}`}</b>
+          <i><em style={{ width: progressTotal ? `${(completedCount / progressTotal) * 100}%` : "0%" }} /></i>
+        </div>
+        <hr />
+        <span className="date-row"><Save size={16} /> {t("Updated just now")}</span>
+      </aside>
+    );
+  }
+
+  function renderSystemTrailCanvas() {
+    if (!project) return renderIdeaStudio();
+    if (!project.systemTrail.nodes.length || planningSession?.status !== "completed") {
+      return (
+        <section className="gate-screen-open">
+          <div className="room-panel">
+            <span className="step-kicker">{t("Co-planning first")}</span>
+            <h1>{t("Let’s make the system visible first.")}</h1>
+            <p>{t("You can change the trail before building. The final System Trail Canvas appears after you review and confirm the draft.")}</p>
+            <button className="open-primary" type="button" onClick={() => setActiveStage(planningSession?.draftTrail ? "draft" : canOpen("coplan") ? "coplan" : "understanding")}>
+              {t("Back to co-planning")}
+              <ArrowRight size={17} />
+            </button>
+          </div>
+        </section>
+      );
+    }
+    return (
+      <section className="trail-screen">
+        {renderProjectRail()}
+        <section className="trail-main">
+          <header className="screen-heading">
+            <h1>{t("System Trail Canvas")}</h1>
+            <p>{t("Your project as a system of visible parts. Choose one part to build next.")}</p>
+          </header>
+
+          <div className="trail-canvas-open">
+            <span className="abstract-rail rail-a" />
+            <span className="abstract-rail rail-b" />
+            <span className="abstract-rail rail-c" />
+            <div className="trail-tile-row">
+              {project.systemTrail.nodes.map((node) => {
+                const Icon = nodeIcon(node);
+                return (
+                  <button
+                    key={node.id}
+                    type="button"
+                    className={`system-tile-open ${statusClass(node, selectedNode?.id ?? "")}`}
+                    onClick={() => selectNode(node)}
+                  >
+                    <span className="node-number">{node.order}</span>
+                    <Icon size={34} />
+                    <strong>{t(node.title)}</strong>
+                    <small>{t(node.status === "completed" ? "Completed" : node.status === "current" || node.status === "building" ? "Current focus" : "Upcoming")}</small>
+                    {node.status === "completed" && <Check className="tile-check" size={20} />}
+                  </button>
+                );
+              })}
+            </div>
+            {selectedNode && (
+              <div className="canvas-ai-anchor">
+                <QuietAICard action={{ label: "Ask why", onClick: () => setAssistantNote(selectedNode.suggestedMilestones?.[0]?.rationale ?? selectedNode.visibleBehavior) }}>
+                  {selectedNode.status === "planned" ? "This part may depend on earlier steps. Want to build it now or split it smaller?" : "Small steps help your project grow."}
+                </QuietAICard>
+              </div>
+            )}
+          </div>
+
+          <div className="trail-legend-open">
+            <span><Check size={15} /> {t("Completed")}</span>
+            <span><i /> {t("Current focus")}</span>
+            <span><b /> {t("Upcoming")}</span>
+          </div>
+        </section>
+
+        <aside className="node-detail-panel">
+          {selectedNode ? (
+            <>
+              <div className="detail-title">
+                <span>{selectedNode.order}</span>
+                <div>
+                  <h2>{t(selectedNode.title)}</h2>
+                  <p>{t(selectedNode.visibleBehavior)}</p>
+                </div>
+              </div>
+              <hr />
+              <section>
+                <Lightbulb size={22} />
+                <div>
+                  <h3>{t("Why it matters")}</h3>
+                  <p>{t(selectedNode.suggestedMilestones?.[0]?.rationale ?? "This part helps the user understand what happened.")}</p>
+                </div>
+              </section>
+              <section>
+                <Workflow size={22} />
+                <div>
+                  <h3>{t("What this step includes")}</h3>
+                  <ul>
+                    <li>{t("A visible behavior the learner can test")}</li>
+                    <li>{isZh ? `系统角色：${t(selectedNode.systemRole)}` : `A system role: ${selectedNode.systemRole}`}</li>
+                    <li>{t("A connection to another project part")}</li>
+                  </ul>
+                </div>
+              </section>
+              {!!selectedNode.dependencies?.length && (
+                <section className="dependency-note">
+                  <GitBranch size={22} />
+                  <div>
+                    <h3>{t("Needs first")}</h3>
+                    <p>{selectedNode.dependencies.map((dependency) => t(dependency)).join(isZh ? "，" : ", ")}</p>
+                  </div>
+                </section>
+              )}
+              <button className="open-primary full" type="button" onClick={buildSelectedNode}>
+                <Sparkles size={18} />
+                {t("Build this next")}
+                <ArrowRight size={18} />
+              </button>
+              <button className="open-secondary full" type="button" onClick={() => setAssistantNote("Try splitting this into one visible result, one check, and one preview test.")}>
+                <GitBranch size={18} />
+                {t("Split into smaller steps")}
+              </button>
+              <button className="open-secondary full quiet" type="button" onClick={() => setAssistantNote(selectedNode.suggestedMilestones?.[0]?.rationale ?? "This part makes the system easier to understand.")}>
+                <Sparkles size={18} />
+                {t("Ask AI why")}
+              </button>
+            </>
+          ) : (
+            <p>{t("Select a system tile to see its details.")}</p>
+          )}
+        </aside>
+      </section>
+    );
+  }
+
+  function renderProjectMapCompact() {
+    if (!project) return null;
+    return (
+      <aside className="compact-map">
+        <h2><MapIcon size={22} /> {t("System Trail")}</h2>
         <div>
-          <small>Quiet AI</small>
-          <strong>{message}</strong>
-          {detail && <p>{detail}</p>}
-          {action && (
-            <button className="secondary-button compact" type="button" onClick={action.onClick}>
-              {action.label}
+          {project.systemTrail.nodes.map((node) => {
+            const Icon = nodeIcon(node);
+            return (
+              <button
+                key={node.id}
+                type="button"
+                className={`${statusClass(node, selectedNode?.id ?? "")}`}
+                onClick={() => {
+                  selectNode(node);
+                  setActiveStage("trail");
+                }}
+              >
+                <span>{node.status === "completed" ? <Check size={17} /> : node.order}</span>
+                <Icon size={20} />
+                <div>
+                  <strong>{t(node.title)}</strong>
+                  <small>{t(node.visibleBehavior)}</small>
+                </div>
+                <ArrowRight size={15} />
+              </button>
+            );
+          })}
+        </div>
+      </aside>
+    );
+  }
+
+  function renderRoomStepper() {
+    return (
+      <aside className="room-stepper">
+        <h2>{t("Milestone Room")}</h2>
+        <p>{t("One scaffold at a time.")}</p>
+        {roomSteps.map((step, index) => {
+          const Icon = step.icon;
+          return (
+            <button
+              key={step.id}
+              type="button"
+              className={roomStep === step.id ? "active" : ""}
+              onClick={() => setRoomStep(step.id)}
+            >
+              <span>{index + 1}</span>
+              <Icon size={18} />
+              <div>
+                <strong>{t(step.label)}</strong>
+                <small>{t(step.detail)}</small>
+              </div>
+            </button>
+          );
+        })}
+        <QuietAICard>{assistantNote}</QuietAICard>
+      </aside>
+    );
+  }
+
+  function renderStoryStep() {
+    return (
+      <section className="room-panel story-step">
+        <span className="step-kicker">{t("This step")}</span>
+        <h1>{t(selectedNode?.title ?? "Choose a system part")}</h1>
+        <p>{t(selectedNode?.visibleBehavior ?? "Pick a tile from the System Trail Canvas.")}</p>
+        <div className="before-after-open">
+          <article>
+            <small>{t("Before")}</small>
+            <p>{t(selectedStory.before)}</p>
+          </article>
+          <ArrowRight size={28} />
+          <article>
+            <small>{t("After")}</small>
+            <p>{t(selectedStory.after)}</p>
+          </article>
+        </div>
+        <button className="open-primary" type="button" onClick={() => setRoomStep("checks")}>
+          {t("Write my checks")}
+          <ArrowRight size={18} />
+        </button>
+      </section>
+    );
+  }
+
+  function renderChecksStep() {
+    return (
+      <section className="room-panel checks-step">
+        <div className="panel-title-row">
+          <div>
+            <span className="step-kicker">{t("My checks")}</span>
+            <h1>{t("What should happen when this step is done?")}</h1>
+            <p>{t("Write 2-4 things you can see or test. These are your words first.")}</p>
+          </div>
+          <button className="open-secondary" type="button" onClick={() => selectedNode && setDraftChecklists((current) => ({ ...current, [selectedNode.id]: t(starterChecksForNode(selectedNode)) }))}>
+            {t("Show example")}
+          </button>
+        </div>
+        <div className="sentence-starters">
+          {sentenceStarters.map((starter) => (
+            <button
+              key={starter}
+              type="button"
+              onClick={() => selectedNode && setDraftChecklists((current) => ({ ...current, [selectedNode.id]: `${selectedDraft}${selectedDraft ? "\n" : ""}${t(starter)}` }))}
+            >
+              {t(starter)}
+            </button>
+          ))}
+        </div>
+        <textarea
+          value={selectedDraft}
+          placeholder={t(starterChecksForNode(selectedNode))}
+          onChange={(event) => selectedNode && setDraftChecklists((current) => ({ ...current, [selectedNode.id]: event.target.value }))}
+          aria-label={t("Student-authored checklist")}
+        />
+        {selectedFeedback && (
+          <div className="ai-suggestion-soft">
+            <Sparkles size={19} />
+            <div>
+              <strong>{t(selectedFeedback.assistantMessage)}</strong>
+              <ul>
+                {selectedFeedback.improvedChecklist.map((item) => <li key={item}>{t(item)}</li>)}
+              </ul>
+            </div>
+          </div>
+        )}
+        <div className="button-row-open">
+          <button className="open-secondary" type="button" onClick={reviewSelectedChecklist} disabled={isBusy || !selectedDraft.trim()}>
+            <Sparkles size={17} />
+            {t("Ask Quiet AI")}
+          </button>
+          {selectedFeedback && (
+            <button className="open-secondary" type="button" onClick={() => confirmChecklist("ai-suggested")} disabled={isBusy}>
+              {t("Use suggestion")}
             </button>
           )}
+          <button className="open-primary" type="button" onClick={() => confirmChecklist("student")} disabled={isBusy || parseChecklistText(selectedDraft).length < 2}>
+            {t("Keep my words")}
+            <ArrowRight size={17} />
+          </button>
         </div>
       </section>
     );
   }
 
-  function renderTrailLegend() {
+  function renderLogicStep() {
+    const chain = selectedPlan?.logicChain ?? [];
     return (
-      <div className="trail-legend" aria-label="Build trail legend">
-        <span>
-          <Check size={16} />
-          Completed
-        </span>
-        <span>
-          <i />
-          Current focus
-        </span>
-        <span>
-          <b />
-          Upcoming
-        </span>
+      <section className="room-panel logic-step-open">
+        <span className="step-kicker">{t("See the logic")}</span>
+        <h1>{t("Logic Chain")}</h1>
+        <p>{t("Systems thinking first: action, change, result, understanding.")}</p>
+        {!chain.length ? (
+          <button className="open-primary" type="button" onClick={createLogicPlan} disabled={isBusy || !selectedChecklist.length}>
+            <Workflow size={18} />
+            {t("Create logic chain")}
+          </button>
+        ) : (
+          <>
+            <div className="logic-chain-open">
+              {chain.map((step, index) => (
+                <article key={step.id}>
+                  <span>{index + 1}</span>
+                  <strong>{t(step.title)}</strong>
+                  <small>{t(roleLabel(step.role))}</small>
+                  <p>{t(step.detail)}</p>
+                  {index < chain.length - 1 && <ArrowRight size={20} />}
+                </article>
+              ))}
+            </div>
+            <button className="open-primary" type="button" onClick={() => setRoomStep("build")}>
+              {t("Build this logic")}
+              <ArrowRight size={18} />
+            </button>
+          </>
+        )}
+      </section>
+    );
+  }
+
+  function renderBuildStep() {
+    return (
+      <section className="room-panel build-step-open">
+        <span className="step-kicker">{t("Build and try")}</span>
+        <h1>{t("Turn one system part into the preview.")}</h1>
+        <p>{isZh ? `不生成完整项目。这次只制作：${t(selectedNode?.title ?? "one selected part")}。` : `No full project generation. This build targets only: ${selectedNode?.title ?? "one selected part"}.`}</p>
+        <div className="build-target-card">
+          <Wand2 size={28} />
+          <div>
+            <strong>{t(selectedNode?.visibleBehavior)}</strong>
+            <span>{isZh ? `${selectedChecklist.length} 条检查会由学习者测试。` : `${selectedChecklist.length} checks will be tested by the learner.`}</span>
+          </div>
+        </div>
+        <button className="open-primary big" type="button" onClick={buildPatch} disabled={isBusy || !selectedChecklist.length}>
+          <Sparkles size={20} />
+          {t("Build this step")}
+          <ArrowRight size={20} />
+        </button>
+      </section>
+    );
+  }
+
+  function renderChecklistTestPanel() {
+    return (
+      <aside className="check-test-panel">
+        <h2><ListChecks size={20} /> {t("Check preview")}</h2>
+        <p>{t("You decide what happened. The app does not auto-complete your checks.")}</p>
+        {selectedChecklist.length ? (
+          selectedChecklist.map((item) => (
+            <article key={item.id}>
+              <p>{t(item.text)}</p>
+              <div>
+                {(["yes", "not-yet", "not-sure"] as const).map((status) => (
+                  <button
+                    key={status}
+                    type="button"
+                    className={item.status === status ? "active" : ""}
+                    onClick={() => setCheckStatus(item.id, status)}
+                  >
+                    {t(status === "yes" ? "Yes" : status === "not-yet" ? "Not yet" : "I'm not sure")}
+                  </button>
+                ))}
+              </div>
+            </article>
+          ))
+        ) : (
+          <p>{t("No checks yet.")}</p>
+        )}
+        <button className="open-primary full" type="button" onClick={completeCurrentNode} disabled={!selectedChecklist.length || selectedChecklist.some((item) => item.status !== "yes")}>
+          {t("Your system grew")}
+          <ArrowRight size={17} />
+        </button>
+        <button className="open-secondary full" type="button" onClick={() => setActiveStage("debug")} disabled={!selectedChecklist.length}>
+          {t("Open Mismatch Lens")}
+        </button>
+      </aside>
+    );
+  }
+
+  function renderPreviewFrame() {
+    return (
+      <div className="preview-frame-open">
+        <div className="preview-header-open">
+          <strong><Monitor size={19} /> {t("Preview Stage")}</strong>
+          <span className={previewState.status}><i /> {t(previewState.status === "idle" ? "Ready" : previewState.status)}</span>
+          <button type="button" onClick={runPreview} disabled={isBusy}>
+            <Play size={16} />
+            {t("Run and check")}
+          </button>
+        </div>
+        <P5Preview code={code} runKey={runKey} onConsole={onConsole} onError={onPreviewError} />
       </div>
     );
   }
 
-  function renderNextBuildPanel(mode: "choose" | "logic" | "debug" | "growth" = "choose") {
-    const future = milestones.length
-      ? milestones.filter((milestone) => milestone.order > (selectedMilestone?.order ?? 0)).slice(0, 3)
-      : [];
-    const defaultOptions = [
-      { title: "First screen", detail: "Create the welcome or start screen.", icon: Play, tone: "teal" },
-      { title: "One question", detail: "Add a question and multiple choices.", icon: CircleHelp, tone: "blue" },
-      { title: "Answer feedback", detail: "Show feedback when a player answers.", icon: MessageCircle, tone: "amber" }
-    ];
-    const options: Array<{ title: string; detail: string; icon: typeof Play; tone: string; milestone?: Milestone }> = future.length
-      ? future.map((milestone) => ({ title: milestone.title, detail: grade3Copy(milestone.visibleOutput), icon: milestoneIconForOrder(milestone.order), tone: milestone.order === 4 ? "blue" : "amber", milestone }))
-      : defaultOptions.map((item) => ({ ...item, milestone: undefined }));
-
+  function renderPreviewStep() {
     return (
-      <aside className={`next-build-panel ${mode}`}>
-        <h2>Choose your next build step</h2>
-        <p>{mode === "logic" ? "You're building great. Here is what comes next." : "Pick a starting point. You can change it anytime."}</p>
-        <div className="next-build-list">
-          {options.map((option, index) => {
-            const Icon = option.icon;
-            return (
-              <button
-                className={`next-build-option ${option.tone} ${index === 0 ? "active" : ""}`}
-                type="button"
-                key={option.title}
-                onClick={() => option.milestone ? handleSelectMilestone(option.milestone) : undefined}
-              >
-                <Icon size={30} />
-                <div>
-                  <strong>{option.title}</strong>
-                  <span>{option.detail}</span>
-                </div>
-                <ArrowRight size={22} />
-              </button>
-            );
-          })}
-          {mode === "growth" && (
-            <button className="next-build-option amber" type="button">
-              <Paintbrush size={30} />
-              <div>
-                <strong>Style the game</strong>
-                <span>Pick colors, fonts, and make it yours.</span>
-              </div>
-              <ArrowRight size={22} />
-            </button>
-          )}
+      <section className="preview-stage-open room-panel">
+        <div>
+          {renderPreviewFrame()}
         </div>
-      </aside>
+        {renderChecklistTestPanel()}
+      </section>
     );
   }
 
-  function renderDashboard() {
-    const canMakeMap = Boolean(goalInterview?.readiness.canGeneratePath);
-    const ideaCtaLabel = canMakeMap ? "Make my system trail" : goalInterview ? "Continue in System Trail" : "Start my system trail";
-    const seedTrail = [
-      { title: "Goal", detail: "Your idea", icon: Target },
-      { title: "First view", detail: "What players see", icon: Play },
-      { title: "Action", detail: "What players do", icon: MousePointerClick },
-      { title: "Feedback", detail: "What changes", icon: MessageCircle }
-    ];
-
+  function renderChangedStep() {
     return (
-      <section className="idea-seed-screen">
-        <aside className="idea-side-rail">
-          <span className="project-orb">
-            <Gamepad2 size={38} />
-          </span>
-          <h2>School Quiz Game</h2>
-          <p>A quiz game about my school.</p>
-          <div className="seed-status-card">
-            <small>Current focus</small>
-            <strong>
-              <Target size={18} />
-              Idea seed
-            </strong>
-          </div>
-          <div className="seed-helper-stack">
-            <strong>Quick starters</strong>
-            {helperChoices.map((choice) => {
-              const Icon = choice.icon;
-              return (
-                <button
-                  type="button"
-                  key={choice.label}
-                  onClick={() => setIdea(choice.label === "Describe it myself" ? DEFAULT_IDEA : `${DEFAULT_IDEA} I want it to start with ${choice.label.toLowerCase()}.`)}
-                >
-                  <Icon size={18} />
-                  <span>{choice.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </aside>
+      <section className="room-panel changed-step-open">
+        <span className="step-kicker">{t("What changed")}</span>
+        <h1>{t("Your system grew.")}</h1>
+        <p>{t(`This step added: ${selectedNode?.visibleBehavior ?? ""}`)}</p>
+        <button className="open-primary" type="button" onClick={completeCurrentNode}>
+          {t("Show System Growth Map")}
+          <ArrowRight size={18} />
+        </button>
+      </section>
+    );
+  }
 
-        <section className="idea-seed-stage">
-          <div className="idea-seed-title">
-            <span className="step-pill">Step 1 of 5</span>
-            <h1>
-              <Sparkles size={30} />
-              Idea Seed Studio
-            </h1>
-            <p>Start with what you want to make happen. The system trail grows from your answers.</p>
-          </div>
+  function renderRoomContent() {
+    if (roomStep === "story") return renderStoryStep();
+    if (roomStep === "checks") return renderChecksStep();
+    if (roomStep === "logic") return renderLogicStep();
+    if (roomStep === "build") return renderBuildStep();
+    if (roomStep === "preview") return renderPreviewStep();
+    return renderChangedStep();
+  }
 
-          <section className="idea-seed-hero">
-            <div className="seed-orbit" aria-hidden="true">
-              <span className="seed-ring one" />
-              <span className="seed-ring two" />
-              <span className="seed-dot dot-one" />
-              <span className="seed-dot dot-two" />
-              <span className="seed-dot dot-three" />
-              <Target size={78} />
-            </div>
-            <label className="idea-seed-input">
-              <span>What do you want to make happen?</span>
-              <textarea maxLength={500} value={idea} onChange={(event) => setIdea(event.target.value)} aria-label="Project idea" />
-              <small>
-                <CheckCircle2 size={16} />
-                Clear enough to start asking.
-              </small>
-            </label>
-            <div className="seed-player-preview">
-              <strong>Players might...</strong>
-              <span><Play size={17} /> open a start screen</span>
-              <span><CircleHelp size={17} /> answer one school question</span>
-              <span><MessageCircle size={17} /> see helpful feedback</span>
-            </div>
-          </section>
-
-          <section className="seed-trail-preview" aria-label="System trail preview">
-            {seedTrail.map((item, index) => {
-              const Icon = item.icon;
-              return (
-                <article key={item.title} className={index === 0 ? "active" : ""}>
-                  <span>{index + 1}</span>
-                  <Icon size={26} />
-                  <div>
-                    <strong>{item.title}</strong>
-                    <small>{item.detail}</small>
-                  </div>
-                </article>
-              );
-            })}
-          </section>
-
-          <section className="starter-strip seed-starters" aria-label="Example project starters">
-            {starterCards.map((card) => {
-              const Icon = card.icon;
-              return (
-                <button className={`starter-mini ${card.tone}`} type="button" key={card.title} onClick={() => setIdea(card.idea)}>
-                  <Icon size={19} />
-                  <span>{card.title}</span>
-                </button>
-              );
-            })}
-          </section>
-        </section>
-
-        <aside className="idea-clarify-rail">
-          <div>
-            <span className="quiet-mark">
-              <Wand2 size={22} />
-            </span>
-            <h2>Shape the first trail</h2>
-            <p>Pick what feels right. Nothing is built yet.</p>
-          </div>
-
-          {[
-            {
-              question: "What should players see first?",
-              options: ["Title screen", "First question", "How to play"],
-              icon: Play
-            },
-            {
-              question: "What should they do next?",
-              options: ["Choose an answer", "Pick a topic", "Read a clue"],
-              icon: MousePointerClick
-            },
-            {
-              question: "What should change after that?",
-              options: ["Show feedback", "Add score", "Next question"],
-              icon: MessageCircle
-            }
-          ].map((prompt, promptIndex) => {
-            const Icon = prompt.icon;
-            return (
-              <article className="seed-question" key={prompt.question}>
-                <div>
-                  <span>{promptIndex + 1}</span>
-                  <strong>{prompt.question}</strong>
-                </div>
-                <div>
-                  {prompt.options.map((option, optionIndex) => (
-                    <button
-                      className={optionIndex === 0 ? "selected" : ""}
-                      type="button"
-                      key={option}
-                      onClick={() => setIdea(`${DEFAULT_IDEA} ${option}.`)}
-                    >
-                      {option}
-                    </button>
-                  ))}
-                </div>
-                <label>
-                  <Icon size={16} />
-                  <input placeholder="Or type your own idea..." aria-label={`${prompt.question} custom answer`} />
-                </label>
-              </article>
-            );
-          })}
-
-          <button
-            className="primary-button seed-map-cta"
-            type="button"
-            onClick={canMakeMap ? handleGeneratePath : goalInterview ? () => setActiveStage("flowchart") : handleStartGoalInterview}
-            disabled={isBusy || !idea.trim()}
-          >
-            <Map size={19} />
-            {ideaCtaLabel}
-            <ArrowRight size={19} />
+  function renderMilestoneRoom() {
+    if (!project || !selectedNode) return renderSystemTrailCanvas();
+    return (
+      <section className="room-screen">
+        {renderProjectMapCompact()}
+        <main className="room-main">
+          <button className="back-link-open" type="button" onClick={() => setActiveStage("trail")}>
+            <ArrowLeft size={16} />
+            {t("Back to System Trail")}
           </button>
-          <small>
-            <LockIcon />
-            No code yet. First we make the trail visible.
-          </small>
-        </aside>
+          {renderRoomContent()}
+        </main>
+        {renderRoomStepper()}
       </section>
     );
   }
 
-  function LockIcon() {
+  function renderPreviewStage() {
+    if (!project || !selectedNode) return renderSystemTrailCanvas();
     return (
-      <span aria-hidden="true" className="tiny-lock">
-        •
-      </span>
-    );
-  }
-
-  function renderFlowchart() {
-    const canGeneratePath = Boolean(goalInterview?.readiness.canGeneratePath);
-    const trail = trailItems();
-    const activeOrder = selectedMilestone?.order ?? 3;
-    const activeTrail = trail.find((item) => item.order === activeOrder) ?? trail[2] ?? trail[0];
-
-    return (
-      <section className="system-trail-screen">
-        {renderProjectSideCard()}
-
-        <section className="system-trail-canvas">
-          <div className="trail-heading">
-            <div>
-              <h1>System Trail Canvas</h1>
-              <p>Your build trail, one step at a time.</p>
-            </div>
-          </div>
-
-          <div className="trail-canvas-field">
-            <span className="trail-rail rail-one" />
-            <span className="trail-rail rail-two" />
-            <span className="trail-rail rail-three" />
-            {trail.map((item) => {
-              const Icon = item.icon;
-              const isCompleted = item.status === "done" || item.status === "known";
-              const isCurrent = item.order === activeOrder || item.status === "in_progress";
-              return (
-                <button
-                  type="button"
-                  className={`system-tile tile-${item.order} ${isCompleted ? "completed" : ""} ${isCurrent ? "current" : ""}`}
-                  key={item.id}
-                  onClick={() => {
-                    const milestone = milestones.find((candidate) => candidate.order === item.order);
-                    if (milestone) handleSelectMilestone(milestone);
-                  }}
-                >
-                  {isCurrent && <span className="focus-pin" />}
-                  <span className="tile-number">{item.order}</span>
-                  <Icon size={42} />
-                  <strong>{item.title}</strong>
-                  <small>{isCompleted ? <Check size={18} /> : isCurrent ? "Current" : "Upcoming"}</small>
-                </button>
-              );
-            })}
-
-            {project && activeTrail && (
-              <div className="trail-floating-ai">
-                {renderQuietAiCard("This step may be too big.", "Want to split it?", {
-                  label: "Review step",
-                  onClick: () => setActiveScaffoldStep("story")
-                })}
-              </div>
-            )}
-          </div>
-
-          {renderTrailLegend()}
-        </section>
-
-        {project && activeTrail ? (
-          <aside className="selected-step-panel">
-            <button className="panel-close" type="button" onClick={() => setActiveStage("milestones")}>
-              <X size={20} />
-            </button>
-            <div className="selected-step-title">
-              <span>{activeTrail.order}</span>
-              <h2>{activeTrail.title}</h2>
-            </div>
-            <p>{activeTrail.detail}</p>
-            <hr />
-            <section>
-              <span className="thought-icon">
-                <Lightbulb size={22} />
-              </span>
-              <div>
-                <h3>Why it matters</h3>
-                <p>Feedback helps players learn and stay engaged. A clear explanation turns a simple answer into real understanding.</p>
-              </div>
-            </section>
-            <hr />
-            <h3>What this step includes</h3>
-            <ul>
-              <li>Check if the player's answer is correct</li>
-              <li>Show correct answer and explanation</li>
-              <li>Celebrate correct answers with feedback</li>
-            </ul>
-            <button className="trail-primary-action" type="button" onClick={() => setActiveStage("milestones")}>
-              <Sparkles size={18} />
-              Build this next
-              <ArrowRight size={18} />
-            </button>
-            <button className="trail-secondary-action" type="button">
-              <GitBranch size={18} />
-              Split into smaller steps
-            </button>
-            <button className="trail-secondary-action quiet" type="button">
-              <Sparkles size={18} />
-              Ask AI why
-            </button>
-            <button className="trail-learn-link" type="button">
-              Learn more about this step
-              <ExternalLink size={15} />
-            </button>
-          </aside>
-        ) : (
-          <aside className="trail-question-panel">
-            <h2>{goalInterview?.readiness.canGeneratePath ? "Choose your next build step" : "Build your trail"}</h2>
-            <p>{goalInterview?.readiness.canGeneratePath ? "You have enough choices to create the first bounded milestone." : "Answer one question. The trail grows only when the idea is clearer."}</p>
-            {!goalInterview ? (
-              <>
-                <button className="primary-button" type="button" onClick={handleStartGoalInterview} disabled={isBusy}>
-                  Start asking
-                </button>
-              </>
-            ) : goalInterview.nextQuestion ? (
-              <div className="question-block">
-                <span className="question-kicker">{goalInterview.progressLabel}</span>
-                <strong>{goalInterview.nextQuestion.prompt}</strong>
-                <div className="option-list">
-                  {goalInterview.nextQuestion.options.map((option) => (
-                    <button
-                      className={`choice-button ${draftAnswer === option ? "selected" : ""}`}
-                      key={option}
-                      type="button"
-                      onClick={() => setDraftAnswer(option)}
-                    >
-                      {option}
-                    </button>
-                  ))}
-                </div>
-                <input
-                  aria-label="Custom goal interview answer"
-                  placeholder="Or type your answer..."
-                  value={draftAnswer}
-                  onChange={(event) => setDraftAnswer(event.target.value)}
-                />
-                <button className="secondary-button" type="button" onClick={() => handleAnswerGoalQuestion(draftAnswer)} disabled={isBusy || !draftAnswer.trim()}>
-                  <ArrowRight size={16} />
-                  Answer and grow map
-                </button>
-              </div>
-            ) : (
-              <p>Ready. Make the trail and choose the first small step.</p>
-            )}
-            <button className="primary-button" type="button" onClick={handleGeneratePath} disabled={isBusy || !canGeneratePath}>
-              Make my system trail
-              <ArrowRight size={16} />
-            </button>
-            {!canGeneratePath && goalInterview && <small>{Math.max(0, goalInterview.readiness.requiredCount - goalInterview.readiness.answeredCount)} more answer(s) before we build.</small>}
-            {renderQuietAiCard("Small steps help your project grow.", "You're doing great. Keep building.")}
-          </aside>
-        )}
-      </section>
-    );
-  }
-
-  function ArrowDownConnector() {
-    return (
-      <span className="down-connector" aria-hidden="true">
-        ↓
-      </span>
-    );
-  }
-
-  function renderChecklistWorkshop() {
-    const draftItems = parseChecklistText(draftChecklist);
-
-    return (
-      <section className="panel checklist-workshop">
-        <div className="panel-header">
-          <div>
-            <h2>
-              <ListChecks size={20} />
-              My checklist
-              <span>your draft</span>
-            </h2>
-            <p>Write what your game should do in this step.</p>
-          </div>
-          <button
-            className="secondary-button compact"
-            type="button"
-            onClick={() =>
-              selectedMilestone &&
-              setDraftChecklists((items) => ({
-                ...items,
-                [selectedMilestone.id]: `${draftChecklist}${draftChecklist ? "\n" : ""}I can...`
-              }))
-            }
-            disabled={!selectedMilestone}
-          >
-            <Plus size={15} />
-            Add item
-          </button>
-        </div>
-
-        <div className="checklist-draft-grid">
-          <div className="checklist-draft-list">
-            {(draftItems.length ? draftItems : ["I can click an answer.", "The game says Correct if the answer is right.", "The game says Try again if the answer is wrong."]).map((item, index) => {
-              const isMissing = Boolean(checklistFeedback?.missingStep.some((feedback) => feedback.text === item));
-              const isVague = Boolean(checklistFeedback?.tooVague.some((feedback) => feedback.text === item));
-              const label = !checklistFeedback ? "Draft" : isMissing ? "Missing a step" : isVague ? "Too vague" : "Easy to check";
-              const rowState = !checklistFeedback ? "draft" : isMissing ? "missing" : isVague ? "vague" : "good";
-              return (
-                <div className={`draft-row ${rowState}`} key={`${item}-${index}`}>
-                  <span className="drag-dots">⋮⋮</span>
-                  <input
-                    value={item}
-                    onChange={(event) => {
-                      if (!selectedMilestone) return;
-                      const next = [...draftItems];
-                      next[index] = event.target.value;
-                      setDraftChecklists((items) => ({ ...items, [selectedMilestone.id]: next.join("\n") }));
-                    }}
-                    aria-label={`Checklist item ${index + 1}`}
-                  />
-                  <button type="button" disabled>
-                    {label}
-                    <ChevronDown size={14} />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-
-          <aside className="ai-feedback-summary-card">
-            <h3>
-              <Sparkles size={18} />
-              AI feedback
-            </h3>
-            {checklistFeedback ? (
-              <>
-                <div className="feedback-score-row good">
-                  <Check size={16} />
-                  Easy to check
-                  <strong>{checklistFeedback.goodAndCheckable.length}</strong>
-                </div>
-                <div className="feedback-score-row vague">
-                  <CircleHelp size={16} />
-                  Too vague
-                  <strong>{checklistFeedback.tooVague.length}</strong>
-                </div>
-                <div className="feedback-score-row missing">
-                  <Flag size={16} />
-                  Missing a step
-                  <strong>{checklistFeedback.missingStep.length}</strong>
-                </div>
-                <p>{checklistFeedback.assistantMessage}</p>
-              </>
-            ) : (
-              <>
-                <p>Ask AI to check if your list is easy to test.</p>
-                <button className="primary-button compact" type="button" onClick={handleReviewChecklist} disabled={!selectedMilestone || !draftChecklist.trim() || isBusy}>
-                  <Sparkles size={15} />
-                  Check my list
-                </button>
-              </>
-            )}
-          </aside>
-        </div>
-
-        <textarea
-          className="checklist-workshop-textarea"
-          value={draftChecklist}
-          placeholder={"I can click an answer.\nThe game says Correct if the answer is right.\nThe game says Try again if the answer is wrong."}
-          onChange={(event) =>
-            selectedMilestone &&
-            setDraftChecklists((items) => ({
-              ...items,
-              [selectedMilestone.id]: event.target.value
-            }))
-          }
-          aria-label="Student checklist draft"
-        />
-
-        {checklistFeedback && (
-          <div className="ai-revision-card">
-            <div>
-              <strong>
-                <Sparkles size={17} />
-                AI suggested revision
-              </strong>
-              <span>Clearer and more complete</span>
-            </div>
-            <ul>
-              {checklistFeedback.improvedChecklist.map((item) => (
-                <li key={item}>
-                  <Check size={15} />
-                  {grade3Copy(item)}
-                  <em>Easy to check</em>
-                </li>
-              ))}
-            </ul>
-            <div className="button-row">
-              <button className="primary-button compact" type="button" onClick={() => handleConfirmChecklist(true)} disabled={isBusy}>
-                Use this
-              </button>
-              <button className="secondary-button compact" type="button" onClick={() => setActiveScaffoldStep("checklist")}>
-                <Pencil size={14} />
-                Edit it
-              </button>
-              <button className="secondary-button compact" type="button" onClick={() => handleConfirmChecklist(false)} disabled={isBusy}>
-                Keep mine
-              </button>
-            </div>
-          </div>
-        )}
-      </section>
-    );
-  }
-
-  function renderCenterLogicMap() {
-    return (
-      <section className="panel center-logic-map">
-        <div className="panel-header">
-          <div>
-            <h2>
-              <Workflow size={20} />
-              Visual logic map
-            </h2>
-            <p>This is how your system will work.</p>
-          </div>
-          <button className="secondary-button compact" type="button" onClick={handlePlanMilestone} disabled={!currentChecklist.length || isBusy}>
-            Create logic
-          </button>
-        </div>
-        <div className="logic-card-row">
-          {(milestonePlan?.logicSketch.length ? milestonePlan.logicSketch : currentSystemCards.map((card) => card.title)).map((logicStep, index) => (
-            <article className="logic-card" key={`${logicStep}-${index}`}>
-              <span>{index + 1}</span>
-              <strong>{grade3Copy(logicStep)}</strong>
-              <p>{index === 0 ? "What the player does." : index === 1 ? "What the game checks." : "What the player sees."}</p>
-              {index < Math.min(3, (milestonePlan?.logicSketch.length || currentSystemCards.length)) - 1 && <ArrowRight size={18} />}
-            </article>
-          ))}
-        </div>
-        {milestonePlan && (
-          <div className="logic-question-inline">
-            <strong>{milestonePlan.predictionQuestion.prompt}</strong>
-            {milestonePlan.predictionQuestion.options.map((option, index) => (
-              <button className={predictionAnswer === index ? "selected" : ""} type="button" key={option} onClick={() => setPredictionAnswer(index)}>
-                {grade3Copy(option)}
-              </button>
-            ))}
-          </div>
-        )}
-      </section>
-    );
-  }
-
-  function renderMilestoneGuide(activeIndex: number) {
-    const guide = [
-      ["Milestone story", "Why this step matters."],
-      ["My checks", "Plan the checks."],
-      ["See the logic", "How your checks work."],
-      ["Build and try", "Put it together."],
-      ["Check preview", "What will players see?"],
-      ["What changed", "Your step summary."]
-    ];
-
-    return (
-      <aside className="milestone-guide-panel">
-        <h2>Milestone Room</h2>
-        <p>{activeIndex <= 2 ? "Make your checklist." : activeIndex <= 4 ? "Build and test this step." : "Review your system growth."}</p>
-        <div className="milestone-guide-list">
-          {guide.map(([title, detail], index) => (
-            <button
-              className={activeIndex === index + 1 ? "active" : ""}
-              type="button"
-              key={title}
-              onClick={() => {
-                const nextStep: ScaffoldStep = index < 1 ? "story" : index === 1 ? "checklist" : index === 2 ? "logic" : index === 3 ? "build" : index === 4 ? "preview" : "explain";
-                setActiveScaffoldStep(nextStep);
-              }}
-            >
-              <span>{index + 1}</span>
-              <div>
-                <strong>{title}</strong>
-                <small>{detail}</small>
-              </div>
-            </button>
-          ))}
-        </div>
-        <div className="guide-tip">
-          <Lightbulb size={20} />
-          <div>
-            <strong>Tip</strong>
-            <p>Good checks make clear steps your game can follow.</p>
-          </div>
-        </div>
-      </aside>
-    );
-  }
-
-  function renderChecksStage() {
-    const beforeAfter = beforeAfterForMilestone(selectedMilestone);
-    const draftItems = parseChecklistText(draftChecklist);
-    const displayChecks = draftItems.length
-      ? draftItems
-      : currentChecklist.length
-        ? currentChecklist
-        : [
-            "When the player clicks an answer, check if it is the right answer",
-            "If the answer is correct, show Correct!",
-            "If the answer is wrong, show Try again."
-          ];
-
-    function updateDraftItem(index: number, value: string) {
-      if (!selectedMilestone) return;
-      const next = [...displayChecks];
-      next[index] = value;
-      setDraftChecklists((items) => ({ ...items, [selectedMilestone.id]: next.join("\n") }));
-    }
-
-    return (
-      <section className="milestone-focus-screen checks-screen">
-        {renderProjectSideCard()}
-        <section className="milestone-focus-main">
-          <header className="focus-heading">
-            <h1>This step: {selectedMilestone?.title ?? "Answer feedback"}</h1>
-            <p>{selectedMilestone ? grade3Copy(selectedMilestone.visibleOutput) : "Let's plan what should happen in one small step."}</p>
+      <section className="preview-screen-open">
+        {renderProjectRail()}
+        <main>
+          <header className="screen-heading">
+            <h1>{t("Preview Stage")}</h1>
+            <p>{t("Try the step, then check your own list.")}</p>
           </header>
-
-          <section className="before-after-hero">
-            <div>
-              <span>Before</span>
-              <p>{beforeAfter.before}</p>
-              <i className="ghost-action" />
-            </div>
-            <ArrowRight size={34} />
-            <div>
-              <span>After</span>
-              <p>{beforeAfter.after}</p>
-              {selectedMilestone?.order === 1 ? (
-                <div className="feedback-sample title-sample">
-                  <b><Play size={16} /> Start</b>
-                </div>
-              ) : (
-                <div className="feedback-sample">
-                  <b><Check size={16} /> Correct!</b>
-                  <b className="try"><X size={16} /> Try again.</b>
-                </div>
-              )}
-            </div>
-          </section>
-
-          <section className="my-checks-note">
-            <div className="checks-note-header">
-              <span>
-                <Check size={26} />
-              </span>
-              <div>
-                <h2>My checks</h2>
-                <p>Write the checks your game needs to do in this step.</p>
-              </div>
-              <strong>{displayChecks.length} of {Math.max(3, displayChecks.length)}</strong>
-            </div>
-            <div className="checks-note-list">
-              {displayChecks.map((item, index) => (
-                <div className="check-note-row" key={`${item}-${index}`}>
-                  <span className="drag-dots">⋮⋮</span>
-                  <b>{index + 1}</b>
-                  <input value={item} onChange={(event) => updateDraftItem(index, event.target.value)} aria-label={`My check ${index + 1}`} />
-                  <button type="button" onClick={() => updateDraftItem(index, "")} aria-label="Clear check">
-                    <Trash2 size={18} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="checks-ai-row">
-            {renderQuietAiCard(
-              checklistFeedback ? checklistFeedback.assistantMessage : "Nice start. One check may be missing.",
-              checklistFeedback ? "Choose whether to use the clearer checklist, edit it, or keep yours." : "What happens if the answer is wrong?",
-              { label: checklistFeedback ? "Use suggestion" : "Show example", onClick: checklistFeedback ? () => handleConfirmChecklist(true) : handleReviewChecklist }
-            )}
-          </section>
-
-          <div className="focus-action-row">
-            <button
-              className="secondary-button add-check-button"
-              type="button"
-              onClick={() =>
-                selectedMilestone &&
-                setDraftChecklists((items) => ({
-                  ...items,
-                  [selectedMilestone.id]: `${draftChecklist || displayChecks.join("\n")}\nI can see...`
-                }))
-              }
-            >
-              <Plus size={18} />
-              Add this check
-            </button>
-            <button
-              className="primary-button continue-button"
-              type="button"
-              disabled={isBusy || displayChecks.length < 2}
-              onClick={() => {
-                if (currentChecklist.length) {
-                  setActiveScaffoldStep("logic");
-                } else if (checklistFeedback) {
-                  void handleConfirmChecklist(true);
-                } else {
-                  void handleReviewChecklist();
-                }
-              }}
-            >
-              Continue
-              <ArrowRight size={22} />
-            </button>
+          <div className="preview-workbench-open">
+            {renderPreviewFrame()}
+            {renderChecklistTestPanel()}
           </div>
-        </section>
-        {renderMilestoneGuide(2)}
-      </section>
-    );
-  }
-
-  function renderLogicPreviewStage() {
-    const fallbackChain =
-      !selectedMilestone || selectedMilestone.order <= 1
-        ? [
-            { kind: "goal", title: "Show title", detail: "Players can see what the game is.", icon: Target },
-            { kind: "output", title: "Show Start", detail: "A clear button tells players how to begin.", icon: Play },
-            { kind: "state", title: "Player knows the start", detail: "The first screen feels ready.", icon: User }
-          ]
-        : [
-            { kind: "action", title: "Click answer", detail: "Player selects an answer option.", icon: MousePointerClick },
-            { kind: "decision", title: "Check if right", detail: "Game checks if the answer is correct.", icon: Check },
-            { kind: "feedback", title: "Show message", detail: "Display feedback for the player.", icon: MessageCircle },
-            { kind: "state", title: "Player knows what happened", detail: "Player understands the result.", icon: User }
-          ];
-    const chain = currentSystemCards.length >= 3 ? currentSystemCards : fallbackChain;
-
-    return (
-      <section className="milestone-focus-screen logic-preview-screen">
-        {renderProjectSideCard()}
-        <section className="milestone-focus-main">
-          <header className="focus-heading">
-            <h1>Logic + Preview Stage</h1>
-            <p>See how your game logic works and preview the experience.</p>
-          </header>
-
-          <section className="logic-chain-hero">
-            <h2>Logic Chain</h2>
-            <div className="logic-chain-row">
-              {chain.slice(0, 4).map((card, index) => {
-                const Icon = card.icon;
-                return (
-                  <article className={`logic-chain-card chain-${index + 1}`} key={card.title}>
-                    <span>{index + 1}</span>
-                    <Icon size={44} />
-                    <strong>{card.title}</strong>
-                    <p>{card.detail}</p>
-                    {index < Math.min(4, chain.length) - 1 && <i />}
-                  </article>
-                );
-              })}
-            </div>
-          </section>
-
-          <section className="preview-stage-card">
-            <div className="preview-stage-main">
-              <div className="preview-stage-title">
-                <h2>Preview Stage</h2>
-                <span>
-                  <i />
-                  Live preview
-                </span>
-              </div>
-              <div className="preview-stage-frame">
-                <P5Preview code={code} runKey={runKey} onConsole={handleConsole} onError={handlePreviewError} />
-              </div>
-            </div>
-            <aside className="logic-checklist-card">
-              <h3>Logic checklist</h3>
-              {(currentChecklist.length ? currentChecklist : ["Answer selection", "Correctness check", "Feedback shown"]).slice(0, 4).map((item) => (
-                <div key={item}>
-                  <Check size={18} />
-                  <span>
-                    <strong>{grade3Copy(item)}</strong>
-                    <small>Player can test this in the preview.</small>
-                  </span>
-                </div>
-              ))}
-              <button
-                className="primary-button"
-                type="button"
-                disabled={isBusy || !currentChecklist.length}
-                onClick={() => {
-                  if (!milestonePlan) {
-                    void handlePlanMilestone();
-                  } else if (predictionAnswer === null) {
-                    setPredictionAnswer(milestonePlan.predictionQuestion.correctIndex);
-                  } else {
-                    void handleApplyPatch();
-                  }
-                }}
-              >
-                <Play size={18} />
-                Run and check
-              </button>
-            </aside>
-          </section>
-
-        </section>
-        <aside className="logic-right-rail">
-          {renderNextBuildPanel("logic")}
-          {renderQuietAiCard("Here's the heart of your game.", "When a player clicks an answer, we check it, show feedback, and the player knows what happened.")}
+        </main>
+        <aside className="next-panel-open">
+          <h2>{t("Current milestone focus")}</h2>
+          <p>{t(selectedNode.title)}</p>
+          <button className="open-secondary full" type="button" onClick={() => setActiveStage("room")}>
+            {t("Back to room")}
+          </button>
+          <QuietAICard>Look first, then decide. Yes, not yet, and I'm not sure are all useful answers.</QuietAICard>
         </aside>
       </section>
     );
   }
 
   function renderMismatchLens() {
+    if (!project || !selectedNode) return renderSystemTrailCanvas();
+    const expected = missingCheck?.text ?? selectedNode.visibleBehavior;
     return (
-      <section className="milestone-focus-screen mismatch-screen">
-        {renderProjectSideCard()}
-        <section className="milestone-focus-main">
-          <header className="focus-heading">
-            <h1>Mismatch Lens / Preview Debug</h1>
-            <p>Compare what you expected vs. what actually happened.</p>
+      <section className="debug-screen-open">
+        {renderProjectRail()}
+        <main>
+          <header className="screen-heading">
+            <h1>{t("Mismatch Lens")}</h1>
+            <p>{t("Compare what you expected with what actually happened. No panic, just observation.")}</p>
           </header>
-
-          <section className="mismatch-lens-card">
-            <div className="wanted-panel">
+          <section className="mismatch-card-open">
+            <article className="wanted-open">
               <span><Check size={22} /></span>
-              <h2>I wanted</h2>
-              <p>When I click a correct answer, the game shows “Correct!”</p>
-              <div className="wanted-visual">
-                <strong>Correct!</strong>
-                <small>Great job!</small>
-                <Check size={28} />
-              </div>
-            </div>
-            <div className="lens-icon">
-              <Eye size={42} />
-            </div>
-            <div className="saw-panel">
-              <span><Sparkles size={22} /></span>
-              <h2>I saw</h2>
-              <textarea value={debugSymptom} onChange={(event) => setDebugSymptom(event.target.value)} aria-label="Observed mismatch" />
-              <div className="saw-visual">
-                <strong>What is the capital of France?</strong>
-                <span>Berlin</span>
-                <span>Madrid</span>
-                <span>Paris</span>
-              </div>
-            </div>
+              <h2>{t("I wanted")}</h2>
+              <p>{t(expected)}</p>
+            </article>
+            <div className="lens-divider-open"><Eye size={40} /></div>
+            <article className="saw-open">
+              <span><CircleHelp size={22} /></span>
+              <h2>{t("I saw")}</h2>
+              <textarea value={t(observedBehavior)} onChange={(event) => setObservedBehavior(event.target.value)} aria-label={t("Observed behavior")} />
+            </article>
           </section>
-
-          <section className="missing-check-card">
+          <section className="missing-check-open">
             <div>
-              <span>!</span>
-              <div>
-                <h2>The missing check</h2>
-                <p>{grade3Copy(failedChecklistItem || firstUncheckedChecklistItem || "The game needs to show feedback when the player selects a correct answer.")}</p>
-              </div>
+              <strong>{t("The missing check")}</strong>
+              <p>{t(expected)}</p>
             </div>
-            <div className="missing-step-chain">
-              {["Is answer correct?", "Show “Correct!” message", "Add points", "Go to next question"].map((item, index) => (
-                <button className={index === 1 ? "active" : ""} type="button" key={item}>
-                  {index === 0 ? <Check size={16} /> : <span />}
-                  {item}
-                  <ArrowRight size={15} />
-                </button>
-              ))}
-            </div>
+            <button className="open-primary" type="button" onClick={diagnoseMismatch} disabled={isBusy}>
+              {t("Find one small fix")}
+            </button>
           </section>
-
-          <section className="debug-preview-row">
-            <div className="preview-stage-label">
-              <Monitor size={24} />
-              <h2>Preview stage</h2>
-              <p>This is what your game looks like right now.</p>
-            </div>
-            <div className="debug-preview-frame">
-              <P5Preview code={code} runKey={runKey} onConsole={handleConsole} onError={handlePreviewError} />
-            </div>
-            <aside className="try-fix-card">
+          {debugDiagnosis && (
+            <section className="try-fix-open">
               <Lightbulb size={22} />
-              <h2>Try this fix</h2>
-              <p>{debugDiagnosis?.fixSummary ?? "Add a message step that shows “Correct!” when the answer is right."}</p>
-              <button className="primary-button" type="button" onClick={debugDiagnosis ? handleApplyPatch : handleDiagnoseDebug} disabled={isBusy || !selectedMilestone}>
-                <Sparkles size={16} />
-                Add message step
-              </button>
-              <button className="link-button" type="button">Show me how</button>
-            </aside>
-          </section>
-
-        </section>
-        <aside className="logic-right-rail">
-          {renderNextBuildPanel("debug")}
-          {renderQuietAiCard("The message step may be missing.", "Add feedback so players know they're correct.")}
-        </aside>
-      </section>
-    );
-  }
-
-  function renderSystemGrowthMap() {
-    const chain = [
-      { title: "Player clicks answer", icon: MousePointerClick },
-      { title: "Game checks answer", icon: ListChecks },
-      { title: "Feedback appears", icon: MessageCircle },
-      { title: "Player knows what happened", icon: User }
-    ];
-
-    return (
-      <section className="milestone-focus-screen growth-screen">
-        {renderProjectSideCard({ updated: true })}
-        <section className="milestone-focus-main">
-          <header className="focus-heading">
-            <h1>System Growth Map / What changed?</h1>
-            <p>Your system grew. This step added a feedback loop.</p>
-          </header>
-
-          <section className="growth-map-card">
-            <span className="growth-loop-line" />
-            {chain.map((item, index) => {
-              const Icon = item.icon;
-              return (
-                <article className={`growth-node ${index === 2 ? "new" : ""}`} key={item.title}>
-                  {index === 2 && <em>New</em>}
-                  <span>{index + 1}</span>
-                  <Icon size={44} />
-                  <strong>{item.title}</strong>
-                  {index < chain.length - 1 && <i />}
-                  <Check size={22} />
-                </article>
-              );
-            })}
-          </section>
-
-          <section className="growth-summary-card">
-            <span>
-              <Sparkles size={30} />
-            </span>
-            <div>
-              <h2>Great work! Your system grew.</h2>
-              <p>You added feedback so players always know what happened.</p>
-            </div>
-            <div className="mini-build-trail">
-              <strong>Build trail</strong>
-              {[1, 2, 3, 4, 5].map((step) => (
-                <span className={step <= 3 ? "done" : ""} key={step}>
-                  {step <= 3 ? <Check size={14} /> : null}
-                  {step}
-                </span>
-              ))}
-            </div>
-          </section>
-        </section>
-        <aside className="logic-right-rail">
-          {renderNextBuildPanel("growth")}
-          {renderQuietAiCard("Small steps make big systems.", "You're building something amazing.")}
-        </aside>
-      </section>
-    );
-  }
-
-  function renderMilestones() {
-    if (activeScaffoldStep === "explain") return renderSystemGrowthMap();
-    if (activeScaffoldStep === "logic" || activeScaffoldStep === "build" || activeScaffoldStep === "preview") {
-      return renderLogicPreviewStage();
-    }
-    return renderChecksStage();
-  }
-
-  function renderPreviewDebug() {
-    if (currentStepIsDone || activeScaffoldStep === "explain") {
-      return renderSystemGrowthMap();
-    }
-    return renderMismatchLens();
-
-    return (
-      <section className="stage-view debug-stage">
-        <div className="project-topline">
-          <button type="button" className="back-button" onClick={() => setActiveStage("milestones")}>
-            <ArrowLeft size={17} />
-            Back to project
-          </button>
-          <div className="project-title-block">
-            <span className="project-avatar">
-              <Gamepad2 size={24} />
-            </span>
-            <div>
-              <h1>{projectTitle}</h1>
-              <p>Look at your project, pick what is missing, and fix one thing.</p>
-            </div>
-            <em>Debugging & Improving</em>
-          </div>
-          <button className="secondary-button compact" type="button" onClick={() => setActiveStage("milestones")}>
-            Open project <ArrowRight size={15} />
-          </button>
-        </div>
-
-        <div className="debug-grid">
-          <section className="panel debug-project-map-panel">
-            <div className="panel-header">
-              <h2>
-                <Map size={20} />
-                Project Map
-              </h2>
-              <CircleHelp size={16} />
-            </div>
-            <div className="debug-map-list">
-              {milestones.map((milestone) => (
-                <button
-                  className={`debug-map-item ${milestone.id === selectedMilestoneId ? "active" : ""} ${milestone.status}`}
-                  type="button"
-                  key={milestone.id}
-                  onClick={() => handleSelectMilestone(milestone)}
-                >
-                  <span>{milestone.status === "done" ? <Check size={16} /> : milestone.order}</span>
-                  <div>
-                    <strong>{milestone.title}</strong>
-                    <p>{grade3Copy(milestone.visibleOutput)}</p>
-                  </div>
-                  <ChevronDown size={16} />
-                </button>
-              ))}
-            </div>
-          </section>
-
-          <section className="debug-main-stack">
-            <section className="panel debug-preview-panel">
-              <div className="panel-header">
-                <h2>Live preview after fix</h2>
-                <span className={`run-status ${previewState.status}`}>{previewState.status}</span>
-              </div>
-              <div className="preview-surface debug-preview-surface">
-                <P5Preview code={code} runKey={runKey} onConsole={handleConsole} onError={handlePreviewError} />
-              </div>
-              <p className="muted">Try clicking the preview, then choose what is missing.</p>
-            </section>
-
-            <section className="panel expected-card">
-              <div className="card-title">
-                <Check size={18} />
-                <h2>Should see vs I see</h2>
-              </div>
-              <div className="comparison-grid">
-                <div className="expected-box">
-                  <strong>Should see</strong>
-                  <p>{grade3Copy(failedChecklistItem || firstUncheckedChecklistItem || "This step works in the preview.")}</p>
-                </div>
-                <span className="vs-chip">vs</span>
-                <div className="observed-box">
-                  <strong>I see</strong>
-                  <textarea value={debugSymptom} onChange={(event) => setDebugSymptom(event.target.value)} aria-label="Observed preview behavior" />
-                </div>
-              </div>
-            </section>
-
-            <section className="panel failed-check-card">
-              <div className="card-title">
-                <ListChecks size={18} />
-                <h2>What is missing?</h2>
-              </div>
-              <div className="failed-list">
-                {currentChecklist.length === 0 ? (
-                  <p className="muted">Plan a step first, then pick what is missing.</p>
-                ) : (
-                  currentChecklist.map((item) => (
-                    <label className={failedChecklistItem === item ? "selected" : ""} key={item}>
-                      <input
-                        type="radio"
-                        name="failed-check"
-                        checked={failedChecklistItem === item}
-                        onChange={() => {
-                          setFailedChecklistItem(item);
-                          setDebugSymptom(`I do not see this yet: ${grade3Copy(item)}`);
-                        }}
-                      />
-                      <span>{grade3Copy(item)}</span>
-                    </label>
-                  ))
-                )}
-              </div>
-              <button className="primary-button compact" type="button" onClick={handleDiagnoseDebug} disabled={!selectedMilestone || isBusy}>
-                <Bug size={16} />
-                Help me fix it
-              </button>
-            </section>
-
-            <div className="debug-card-row">
-              <section className="panel fix-card">
-                <div className="card-title">
-                  <Wand2 size={18} />
-                  <h2>Small fix to try</h2>
-                </div>
-                {debugDiagnosis ? (
-                  <>
-                    <small>AI idea · updated just now</small>
-                    <p>{debugDiagnosis?.fixSummary}</p>
-                    <div className="debug-choice-list">
-                      {(debugDiagnosis?.choices ?? []).map((choice) => (
-                        <button className={`choice-button ${choice.isLikely ? "selected" : ""}`} type="button" key={choice.label}>
-                          {choice.label}
-                        </button>
-                      ))}
-                    </div>
-                    <button className="secondary-button compact" type="button" onClick={handleApplyPatch} disabled={isBusy || !selectedMilestone}>
-                      <Sparkles size={15} />
-                      Try this fix
-                    </button>
-                  </>
-                ) : (
-                  <p>Pick what is missing, then ask for one small fix.</p>
-                )}
-              </section>
-
-              <section className="panel mini-explain-card">
-                <div className="card-title">
-                  <Sparkles size={18} />
-                  <h2>Quick why</h2>
-                </div>
-                <p>
-                  <strong>What is happening?</strong>
-                  <br />
-                  The project needs a small rule so the next thing appears.
-                </p>
-                <p>
-                  <strong>Why this helps</strong>
-                  <br />
-                  You can fix your project by checking what you can see.
-                </p>
-                <span>Idea: what appears on screen</span>
-              </section>
-            </div>
-          </section>
-
-          <aside className="debug-side">
-            <section className="panel system-update-card">
-              <div className="card-title">
-                <Workflow size={18} />
-                <h2>System map update</h2>
-              </div>
-              <p>Your game's system has grown.</p>
-              <div className="system-update-list">
-                {currentSystemCards.map((card, index) => {
-                  const Icon = card.icon;
-                  return (
-                    <article key={card.title}>
-                      <Icon size={18} />
-                      <div>
-                        <strong>{index + 1}. {card.title}</strong>
-                        <p>{card.detail}</p>
-                      </div>
-                      {index === currentSystemCards.length - 1 && <em>New</em>}
-                    </article>
-                  );
-                })}
-              </div>
-              <strong className="system-celebration">Great! Your system is clearer now.</strong>
-            </section>
-            <section className="panel next-card">
-              {currentStepIsDone ? (
-                <>
-                  <div className="card-title">
-                    <Flag size={18} />
-                    <h2>Choose next step</h2>
-                  </div>
-                  <p>This step is done. Pick what to build next.</p>
-                  {(milestones.length ? milestones.filter((milestone) => milestone.order > (selectedMilestone?.order ?? 0)).slice(0, 4) : []).map((milestone) => (
-                    <button className="next-option" type="button" key={milestone.id} onClick={() => handleSelectMilestone(milestone)}>
-                      <span>
-                        <Check size={18} />
-                      </span>
-                      <div>
-                        <strong>{milestone.title}</strong>
-                        <p>{grade3Copy(milestone.visibleOutput)}</p>
-                      </div>
-                    </button>
+              <div>
+                <h2>{t("Try this fix")}</h2>
+                <p>{t(debugDiagnosis.fixSummary)}</p>
+                <ul>
+                  {debugDiagnosis.choices.map((choice) => (
+                    <li key={choice.label} className={choice.isLikely ? "likely" : ""}>{t(choice.label)}</li>
                   ))}
-                  <button className="link-button" type="button" onClick={() => setActiveStage("flowchart")}>
-                    Not sure? Ask AI for a suggestion <ArrowRight size={15} />
-                  </button>
-                </>
-              ) : (
-                <>
-                  <div className="card-title">
-                    <ListChecks size={18} />
-                    <h2>Finish this step first</h2>
-                  </div>
-                  <p>Fix the missing checklist item before choosing another step.</p>
-                  <div className="mini-checklist">
-                    {currentChecklist.slice(0, 4).map((item) => (
-                      <span key={item} className={currentChecklistChecks[item] === "yes" ? "done" : ""}>
-                        {currentChecklistChecks[item] === "yes" ? <Check size={14} /> : <CircleHelp size={14} />}
-                        {grade3Copy(item)}
-                      </span>
-                    ))}
-                  </div>
-                </>
-              )}
-            </section>
-            <section className="mentor-card">
-              <Headphones size={24} />
-              <h2>Mentor Support</h2>
-              <p>Need a second opinion or stuck on something?</p>
-              <button type="button" className="secondary-button">
-                Ask a mentor
+                </ul>
+              </div>
+              <button className="open-primary" type="button" onClick={buildPatch} disabled={isBusy}>
+                {t("Apply small fix")}
               </button>
-              <small>Live help times Mon-Fri, 2-6 PM ET</small>
             </section>
-          </aside>
-        </div>
+          )}
+        </main>
+        <aside className="next-panel-open">
+          <h2>{t("Choose your next build step")}</h2>
+          {project.systemTrail.nodes.map((node) => {
+            const Icon = nodeIcon(node);
+            return (
+              <button key={node.id} type="button" className={node.id === selectedNode.id ? "active" : ""} onClick={() => selectNode(node)}>
+                <Icon size={20} />
+                <span>{t(node.title)}</span>
+              </button>
+            );
+          })}
+          <QuietAICard>The missing check points to the smallest fix.</QuietAICard>
+        </aside>
+      </section>
+    );
+  }
+
+  function renderGrowthMap() {
+    if (!project || !selectedNode) return renderSystemTrailCanvas();
+    const chain = selectedPlan?.logicChain ?? [];
+    return (
+      <section className="growth-screen-open">
+        {renderProjectRail()}
+        <main>
+          <header className="screen-heading">
+            <h1>{t("Your system grew.")}</h1>
+            <p>{t(`This step added a visible connection: ${selectedNode.visibleBehavior}`)}</p>
+          </header>
+          <section className="growth-map-open">
+            {(chain.length ? chain : [
+              { id: "one", title: selectedNode.title, detail: selectedNode.visibleBehavior, role: "system-output" as const },
+              { id: "two", title: "User sees change", detail: "The result is visible.", role: "user-understanding" as const }
+            ]).map((step, index) => (
+              <article key={step.id} className={index === Math.min(2, chain.length - 1) ? "new" : ""}>
+                {index === Math.min(2, chain.length - 1) && <em>{isZh ? "新增" : "New"}</em>}
+                <span>{index + 1}</span>
+                <strong>{t(step.title)}</strong>
+                <p>{t(step.detail)}</p>
+                <Check size={19} />
+              </article>
+            ))}
+          </section>
+          <section className="growth-summary-open">
+            <Sparkles size={32} />
+            <div>
+              <h2>{t("Great work. Your system is clearer now.")}</h2>
+              <p>{t("You can go back to the trail and choose the next visible part.")}</p>
+            </div>
+            <button className="open-primary" type="button" onClick={() => {
+              if (nextNode) setSelectedNodeId(nextNode.id);
+              setActiveStage("trail");
+            }}>
+              {t("Return to System Trail")}
+              <ArrowRight size={17} />
+            </button>
+          </section>
+        </main>
+        <aside className="next-panel-open">
+          <h2>{t("Choose your next build step")}</h2>
+          {[nextNode, ...(project.systemTrail.nodes.filter((node) => node.status === "planned").slice(0, 2))].filter(Boolean).map((node) => {
+            const realNode = node as SystemNode;
+            const Icon = nodeIcon(realNode);
+            return (
+              <button key={realNode.id} type="button" onClick={() => {
+                setSelectedNodeId(realNode.id);
+                setActiveStage("trail");
+              }}>
+                <Icon size={22} />
+                <span>{t(realNode.title)}</span>
+                <ArrowRight size={16} />
+              </button>
+            );
+          })}
+          <QuietAICard>Small steps make big systems.</QuietAICard>
+        </aside>
       </section>
     );
   }
 
   return (
-    <main className={`studio-shell stage-${activeStage}`}>
-      <header className="studio-appbar">
-        <div className="studio-brand-row">
-          <button className="studio-brand" type="button" onClick={() => setActiveStage(project ? "milestones" : "dashboard")}>
-            <span className="studio-brand-mark" aria-hidden="true">
-              <i />
-              <i />
-              <i />
-            </span>
-            <strong>Goal-to-Milestone</strong>
-          </button>
-          <span className="appbar-divider" />
-          <div className="studio-breadcrumb">
-            <button type="button" onClick={() => setActiveStage("dashboard")}>My Projects</button>
-            <span>›</span>
-            <button type="button" onClick={() => project ? setActiveStage("flowchart") : setActiveStage("dashboard")}>{projectTitle}</button>
-            <Pencil size={18} />
-            <small>
-              <CheckCircle2 size={15} />
-              All changes saved
-            </small>
-          </div>
-        </div>
-
-        <div className="studio-stage-chips" aria-label="Project stages">
-          {[
-            { stage: "dashboard" as const, label: "Idea", icon: Lightbulb },
-            { stage: "flowchart" as const, label: "Flowchart", icon: Workflow },
-            { stage: "milestones" as const, label: "Milestone", icon: Flag },
-            { stage: "preview" as const, label: "Preview", icon: Eye }
-          ].map((item) => {
-            const Icon = item.icon;
-            return (
-              <button
-                className={activeStage === item.stage ? "active" : ""}
-                type="button"
-                key={item.label}
-                onClick={() => openStage(item.stage)}
-                disabled={!canOpenStage(item.stage)}
-              >
-                <Icon size={15} />
-                {item.label}
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="studio-actions">
-          <span className="saved-status">
-            <Cloud size={18} />
-            Saved just now
-          </span>
-          <span className="appbar-divider" />
-          <button className="studio-action-button" type="button" onClick={() => appendAssistantLog("Help stays simple: pick one thing you want to understand.")}>
-            <CircleHelp size={18} />
-            Help
-          </button>
-          <span className="appbar-divider" />
-          <button className="studio-avatar-button" type="button" aria-label="Learner menu">
-            A
-          </button>
-          <button className="studio-action-button compact-icon" type="button" onClick={() => setDrawerOpen((open) => !open)} title="More">
-            <ChevronDown size={18} />
-          </button>
-          <button className="studio-action-button compact-icon" type="button" title="New goal" onClick={handleResetWorkspace}>
-            <RefreshCcw size={17} />
-          </button>
-          <button className="studio-action-button compact-icon" type="button" title="Roll back to latest checkpoint" onClick={() => activeCheckpoint && handleRollback(activeCheckpoint)} disabled={!activeCheckpoint}>
-            <RotateCcw size={17} />
-          </button>
-        </div>
-      </header>
-
-      <section className="studio-main">
-        {activeStage === "dashboard" && renderDashboard()}
-        {activeStage === "flowchart" && renderFlowchart()}
-        {activeStage === "milestones" && renderMilestones()}
-        {activeStage === "preview" && renderPreviewDebug()}
-        {error && <p className="floating-error">{error}</p>}
+    <main className="open-studio-shell" lang={uiLanguage === "zh" ? "zh-CN" : "en"} data-language={uiLanguage}>
+      {renderAppBar()}
+      <section className="open-studio-main">
+        {activeStage === "idea" && renderIdeaStudio()}
+        {activeStage === "understanding" && renderGoalUnderstanding()}
+        {activeStage === "coplan" && renderCoPlanningStudio()}
+        {activeStage === "draft" && renderDraftTrailReview()}
+        {activeStage === "first" && renderFirstMilestoneChoice()}
+        {activeStage === "trail" && renderSystemTrailCanvas()}
+        {activeStage === "room" && renderMilestoneRoom()}
+        {activeStage === "preview" && renderPreviewStage()}
+        {activeStage === "debug" && renderMismatchLens()}
+        {activeStage === "growth" && renderGrowthMap()}
+        {error && (
+          <p className="open-error">
+            <X size={16} />
+            {t(error)}
+          </p>
+        )}
       </section>
     </main>
   );

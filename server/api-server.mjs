@@ -1,6 +1,16 @@
 import { createServer } from "node:http";
 import "./load-env.mjs";
 import { answerGoalInterview, generateProjectPath, reviewChecklist, startGoalInterview } from "./openai-service.mjs";
+import {
+  advancePlanningSession,
+  answerPlanning,
+  confirmGoalUnderstanding,
+  confirmPlanning,
+  createDraft,
+  reviewDraft,
+  startPlanning,
+  startPlanningSession
+} from "./planning-session-service.mjs";
 
 const PORT = Number(process.env.API_PORT ?? 8787);
 
@@ -25,8 +35,27 @@ const handlers = {
   "/api/goal/interview/start": startGoalInterview,
   "/api/goal/interview/answer": answerGoalInterview,
   "/api/project/path": generateProjectPath,
-  "/api/checklist/review": reviewChecklist
+  "/api/checklist/review": reviewChecklist,
+  "/api/planning/start": startPlanning,
+  "/api/planning/understanding": confirmGoalUnderstanding,
+  "/api/planning/answer": answerPlanning,
+  "/api/planning/draft": createDraft,
+  "/api/planning/review": reviewDraft,
+  "/api/planning/confirm": confirmPlanning,
+  "/api/planning/session/start": startPlanningSession,
+  "/api/planning/session/advance": advancePlanningSession
 };
+
+const localHandlers = new Set([
+  "/api/planning/start",
+  "/api/planning/understanding",
+  "/api/planning/answer",
+  "/api/planning/draft",
+  "/api/planning/review",
+  "/api/planning/confirm",
+  "/api/planning/session/start",
+  "/api/planning/session/advance"
+]);
 
 createServer(async (request, response) => {
   if (request.method === "OPTIONS") {
@@ -53,7 +82,7 @@ createServer(async (request, response) => {
 
   try {
     const body = await readJsonBody(request);
-    if (!process.env.OPENAI_API_KEY) {
+    if (!localHandlers.has(pathname) && !process.env.OPENAI_API_KEY) {
       sendJson(response, 503, { error: "OPENAI_API_KEY is not configured" });
       return;
     }

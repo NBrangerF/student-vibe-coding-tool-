@@ -444,3 +444,69 @@ export function codeForMilestone(target: MilestoneCodeTarget): string {
   if (order === 5) return QUIZ_MILESTONE_5_CODE;
   return STARTER_CODE;
 }
+
+function safeSketchString(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/\n/g, " ").slice(0, 72);
+}
+
+function isQuizLikeTarget(target: MilestoneCodeTarget): boolean {
+  const text = textForTarget(target).toLowerCase();
+  return /quiz|school|question|answer|score|correct|try again|multiple choice|choice button/.test(text);
+}
+
+export function codeForSystemNode(target: MilestoneCodeTarget): string {
+  if (isQuizLikeTarget(target)) return codeForMilestone(target);
+
+  const title = safeSketchString(typeof target === "object" ? target.title ?? "System step" : String(target));
+  const behavior = safeSketchString(typeof target === "object" ? target.visibleOutput ?? "One visible part changes." : "One visible part changes.");
+  const checks = typeof target === "object" ? target.doneChecklist ?? [] : [];
+  const firstCheck = safeSketchString(checks[0] ?? "Try one action.");
+  const secondCheck = safeSketchString(checks[1] ?? "Look for the visible result.");
+
+  return `function setup() {
+  createCanvas(640, 360);
+  textFont('system-ui');
+}
+
+function draw() {
+  background(244, 249, 255);
+  noStroke();
+  drawStudioBackdrop();
+  drawSystemCard();
+}
+
+function drawStudioBackdrop() {
+  fill(225, 242, 255);
+  ellipse(150, 280, 260, 90);
+  fill(236, 231, 255);
+  ellipse(500, 86, 220, 90);
+  stroke(39, 164, 151);
+  strokeWeight(4);
+  noFill();
+  arc(310, 252, 470, 150, PI + 0.15, TWO_PI - 0.2);
+  stroke(246, 177, 61);
+  arc(318, 260, 390, 115, PI + 0.2, TWO_PI - 0.35);
+}
+
+function drawSystemCard() {
+  noStroke();
+  fill(255);
+  rect(92, 56, 456, 236, 16);
+  fill(14, 31, 62);
+  textSize(27);
+  textStyle(BOLD);
+  text('${title}', 126, 114);
+  textStyle(NORMAL);
+  textSize(15);
+  fill(82, 96, 128);
+  text('${behavior}', 126, 150, 388, 52);
+  fill(232, 248, 244);
+  rect(126, 206, 178, 38, 8);
+  fill(8, 128, 110);
+  text('${firstCheck}', 144, 230);
+  fill(255, 247, 229);
+  rect(318, 206, 190, 38, 8);
+  fill(162, 101, 0);
+  text('${secondCheck}', 336, 230);
+}`;
+}
