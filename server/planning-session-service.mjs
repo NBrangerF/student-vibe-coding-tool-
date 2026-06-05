@@ -186,15 +186,15 @@ function inferGoalUnderstanding(idea) {
       learnerFacingRestatement: "You want to make a game where a player can do something and see the game respond.",
       planningLens: "game-interaction",
       confidence: "high",
-      primaryObject: /jump|跳/i.test(cleanIdea) ? "jumping character" : "game object",
-      desiredChange: "player action changes the game",
+      primaryObject: "game object",
+      desiredChange: "player action creates a visible response",
       likelyOutput: "a playable game screen",
       userActor: "player",
       firstPossibleAction: "press start, choose a character, or take the main action",
       systemResponseHypothesis: "the game responds on screen",
       systemGrammar: {
         actor: "player",
-        primaryObject: /jump|跳/i.test(cleanIdea) ? "jumping character" : "game object",
+        primaryObject: "game object",
         input: "tap, click, press a key, or choose an action",
         transformation: "the game updates after the player's action",
         output: "visible game response",
@@ -629,58 +629,40 @@ function goalChoice(id, label, visibleBehavior) {
 
 function goalContractQuestion(field, understanding) {
   if (field === "primaryObject") {
-    const choices = understanding.planningLens === "game-interaction"
-      ? [
-        goalChoice("object-obstacles", "A jumper and obstacles", "The player controls a jumper that must get past obstacles."),
-        goalChoice("object-platforms", "A jumper and platforms", "The player controls a character trying to land on platforms."),
-        goalChoice("object-collectibles", "A jumper and things to collect", "The player jumps to collect items while avoiding misses.")
-      ]
-      : [
-        goalChoice("object-character", "A character or game object", "The project is about a visible character, player, or object."),
-        goalChoice("object-picture", "A picture, drawing, or design", "The project changes or shows an image."),
-        goalChoice("object-list", "Tasks, items, or a list", "The project helps people track things.")
-      ];
+    const choices = [
+      goalChoice("object-visible-thing", "A visible thing on screen", "The project works with one main thing someone can see."),
+      goalChoice("object-user-content", "Something the user makes or adds", "The user provides or creates the main thing the project changes."),
+      goalChoice("object-collection", "A group of items or choices", "The project helps someone work with multiple items, options, or steps.")
+    ];
     return {
       id: "goal-primary-object",
-      prompt: understanding.planningLens === "game-interaction" ? "What is the player controlling or trying to get past?" : "What is the main thing your project works with?",
+      prompt: "What is the main thing your project works with?",
       choices,
       allowFreeText: true,
       allowNotSure: true,
-      targets: understanding.planningLens === "game-interaction" ? ["primaryObject", "coreMechanic"] : ["primaryObject"]
+      targets: ["primaryObject"]
     };
   }
   if (field === "coreMechanic") {
-    const gameChoices = understanding.planningLens === "game-interaction"
-      ? [
-        goalChoice("mechanic-obstacles", "Jump over obstacles to survive", "The player times jumps to avoid obstacles, and each safe jump keeps the game going."),
-        goalChoice("mechanic-platforms", "Land on platforms without falling", "The player jumps between platforms, and missing one ends or resets the run."),
-        goalChoice("mechanic-collect", "Collect items while jumping", "The player jumps to collect items, and the score changes when items are collected.")
-      ]
-      : [
-        goalChoice("mechanic-change", "The user changes one thing", "A visible part changes after the user's action."),
-        goalChoice("mechanic-choose-result", "The user chooses and sees a result", "A choice leads to a visible result."),
-        goalChoice("mechanic-react", "The system reacts", "The project responds after the user acts.")
-      ];
+    const choices = [
+      goalChoice("mechanic-action-change", "An action changes the main thing", "Someone acts, and the project shows a visible change."),
+      goalChoice("mechanic-choice-result", "A choice creates a result", "Someone chooses something, and the project shows what happened."),
+      goalChoice("mechanic-repeat-progress", "Repeating an action shows progress", "Someone can try again or keep going, and the project tracks what changes.")
+    ];
     return {
       id: "goal-core-mechanic",
-      prompt: understanding.planningLens === "game-interaction" ? "What makes the jumping game challenging?" : "What is the main action that makes your project work?",
-      choices: gameChoices,
+      prompt: "What is the main action that makes your project work?",
+      choices,
       allowFreeText: true,
       allowNotSure: true,
-      targets: understanding.planningLens === "game-interaction" ? ["coreMechanic", "primaryObject"] : ["coreMechanic"]
+      targets: ["coreMechanic"]
     };
   }
-  const choices = understanding.planningLens === "game-interaction"
-    ? [
-      goalChoice("end-survive-score", "Survive and raise the score", "The run keeps going while the player avoids mistakes, and the score climbs."),
-      goalChoice("end-reach-finish", "Reach a finish point", "The player reaches a finish platform, door, or level end."),
-      goalChoice("end-collect-target", "Collect a target number", "The player wins or finishes after collecting enough items.")
-    ]
-    : [
-      goalChoice("end-clear-result", "A clear result appears", "The user sees the result they were trying to make."),
-      goalChoice("end-score-or-win", "A score, win, or finish state appears", "The project shows progress or completion."),
-      goalChoice("end-save-share", "The user can save or share it", "The final result can be kept or shown to someone.")
-    ];
+  const choices = [
+    goalChoice("end-clear-result", "A clear result appears", "The user sees the result they were trying to make."),
+    goalChoice("end-progress-complete", "Progress or completion is visible", "The project shows that someone moved forward or finished."),
+    goalChoice("end-save-share", "The result can be kept or shown", "The final result can be saved, shared, or shown to someone else.")
+  ];
   return {
     id: "goal-end-state",
     prompt: "How will someone know the project reached its goal?",
@@ -810,12 +792,12 @@ function isThinGoalValue(field, value, understanding) {
   if (!text || text === "not sure yet" || text === "i'm not sure yet") return true;
 
   if (field === "primaryObject") {
-    if (/^(game object|project part|project content or parts|character or game object|jumping character)$/u.test(text)) return true;
+    if (/^(game object|project part|project content or parts|character or game object)$/u.test(text)) return true;
     if (understanding.planningLens === "game-interaction" && /^jumping (character|game object|player)$/u.test(text)) return true;
   }
 
   if (field === "coreMechanic") {
-    if (/^(player action changes the game|user action changes the project|the system reacts|the user changes one thing)$/u.test(text)) return true;
+    if (/^((player|user) action (changes|creates) (the game|the project|a visible response)|the system reacts|the user changes one thing)$/u.test(text)) return true;
     if (/^player (makes a character )?jump(s)?( while the score (keeps )?(increases|getting higher))?$/u.test(text)) return true;
     if (understanding.planningLens === "game-interaction") {
       const hasAction = /jump|avoid|collect|land|time|tap|move|dodge|survive/u.test(text);
@@ -1311,8 +1293,8 @@ export async function startPlanning(body) {
         "First confirm the learner goal contract.",
         "A ready goal must include a specific primaryObject, a specific coreMechanic, and a concrete endState.",
         "actor is context only; do not block readiness only because actor is generic.",
-        "Do not mark generic game phrases as ready: jumping character, player action changes the game, player makes a character jump.",
-        "For a jumping game, ask what makes jumping challenging: obstacles, platforms, collectibles, timing, or another concrete loop.",
+        "Do not mark placeholder phrases as ready when they only say the project, user, or system does something without a concrete action and visible consequence.",
+        "For any idea type, clarify the concrete loop: the learner-facing object, the action that affects it, the visible change, and the completion signal.",
         "If not ready, ask exactly one direct or indirect goal clarification question."
       ]
     },
@@ -1390,8 +1372,8 @@ export async function confirmGoalUnderstanding(body) {
           "Do not write code.",
           "A ready goal must include a specific primaryObject, a specific coreMechanic, and a concrete endState.",
           "actor is context only; do not block readiness only because actor is generic.",
-          "Do not mark generic game phrases as ready: jumping character, player action changes the game, player makes a character jump.",
-          "For a jumping game, ask what makes jumping challenging: obstacles, platforms, collectibles, timing, or another concrete loop.",
+          "Do not mark placeholder phrases as ready when they only say the project, user, or system does something without a concrete action and visible consequence.",
+          "For any idea type, clarify the concrete loop: the learner-facing object, the action that affects it, the visible change, and the completion signal.",
           "If not ready, ask exactly one next goal clarification question."
         ]
       },

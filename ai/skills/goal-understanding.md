@@ -25,8 +25,8 @@ The minimum confirmed goal contract is:
 - Judge whether the goal is ready for confirmation.
 - If the goal is not ready, identify the missing fields and ask exactly one direct or indirect clarification question.
 - Prefer asking about `coreMechanic` or `endState` when the project type is obvious but the idea is immature.
-- Do not treat generic game phrases as ready, including `jumping character`, `player action changes the game`, or `player makes a character jump`.
-- For a jumping game, clarify the concrete loop: what the player jumps over, lands on, collects, avoids, survives, or reaches.
+- Do not treat placeholder phrases as ready. A field is not ready if it only says that the project, user, or system "does something" or "changes something" without a concrete action and visible consequence.
+- For any idea type, clarify the concrete loop: what the learner-facing object is, what action affects it, what visible change happens, and how someone knows the goal has been reached.
 - If confidence is low, prepare a clarification strategy based on universal system grammar.
 - Avoid implementation terms such as function, variable, API, component, conditional, and state management.
 - If the idea is a learning or homework helper, include a learning boundary note.
