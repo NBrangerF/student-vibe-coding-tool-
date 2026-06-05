@@ -599,8 +599,8 @@ OpenAI Responses API integration.
 
 Responsibilities:
 
-- calls `https://api.openai.com/v1/responses`
-- uses `OPENAI_MODEL`, defaulting to `gpt-5.4-mini`
+- calls `configured OpenAI-compatible Responses endpoint`
+- uses `OPENAI_MODEL`, defaulting to `gpt-5.5`
 - requests structured JSON with a JSON schema
 - asks for English student-facing UI text
 - prompts the model to create an open-ended System Trail with 4-6 visible system capabilities
@@ -674,7 +674,9 @@ Create `.env.local` from `.env.example` when an API key is available:
 
 ```text
 OPENAI_API_KEY=...
-OPENAI_MODEL=gpt-5.4-mini
+OPENAI_BASE_URL=https://api.openai.com
+OPENAI_MODEL=gpt-5.5
+OPENAI_TIMEOUT_MS=30000
 API_PORT=8787
 # Optional when OpenAI must be reached through a local proxy:
 NODE_USE_ENV_PROXY=1

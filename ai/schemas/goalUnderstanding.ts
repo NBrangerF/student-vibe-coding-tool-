@@ -27,6 +27,26 @@ export function validateGoalUnderstanding(understanding: GoalUnderstanding): str
   if (!["high", "medium", "low"].includes(understanding.confidence)) errors.push("confidence is invalid");
   if (!understanding.recommendedCoPlanningStrategy?.firstQuestionFocus) errors.push("firstQuestionFocus is required");
   if (!understanding.recommendedCoPlanningStrategy?.questionSequence?.length) errors.push("questionSequence is required");
+  if (!understanding.goalContract) {
+    errors.push("goalContract is required");
+  } else {
+    if (!understanding.goalContract.learnerGoal?.trim()) errors.push("goalContract.learnerGoal is required");
+    for (const field of ["primaryObject", "actor", "coreMechanic", "endState"] as const) {
+      if (understanding.goalReadiness?.readyForConfirmation && !understanding.goalContract[field]) {
+        errors.push(`goalContract.${field} is required when ready`);
+      }
+    }
+  }
+  if (!understanding.goalReadiness) {
+    errors.push("goalReadiness is required");
+  } else {
+    if (typeof understanding.goalReadiness.readyForConfirmation !== "boolean") errors.push("goalReadiness.readyForConfirmation is required");
+    if (!Array.isArray(understanding.goalReadiness.missingFields)) errors.push("goalReadiness.missingFields is required");
+    if (!["high", "medium", "low"].includes(understanding.goalReadiness.confidence)) errors.push("goalReadiness.confidence is invalid");
+    if (!understanding.goalReadiness.readyForConfirmation && !understanding.goalReadiness.nextQuestion) {
+      errors.push("goalReadiness.nextQuestion is required when not ready");
+    }
+  }
   if (understanding.planningLens === "creative-transform-tool") {
     const words = [
       understanding.primaryObject,

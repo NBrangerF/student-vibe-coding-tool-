@@ -12,7 +12,7 @@ const workflowSteps: Record<AgentPlanningStatus, PlanningWorkflowStep> = {
   IDEA_CAPTURED: {
     status: "IDEA_CAPTURED",
     skill: "goal-understanding",
-    allowedActions: ["confirm-understanding", "revise-understanding"],
+    allowedActions: ["confirm-understanding", "revise-understanding", "answer-goal-question"],
     uiInstruction: {
       surface: "goal-understanding",
       quietAI: "First I will check what you want to make."
@@ -21,7 +21,7 @@ const workflowSteps: Record<AgentPlanningStatus, PlanningWorkflowStep> = {
   GOAL_UNDERSTANDING_GENERATED: {
     status: "GOAL_UNDERSTANDING_GENERATED",
     skill: "goal-understanding",
-    allowedActions: ["confirm-understanding", "revise-understanding"],
+    allowedActions: ["confirm-understanding", "revise-understanding", "answer-goal-question"],
     uiInstruction: {
       surface: "goal-understanding",
       quietAI: "Check my understanding before planning."
@@ -39,7 +39,7 @@ const workflowSteps: Record<AgentPlanningStatus, PlanningWorkflowStep> = {
   GOAL_UNDERSTANDING_NEEDS_CLARIFICATION: {
     status: "GOAL_UNDERSTANDING_NEEDS_CLARIFICATION",
     skill: "goal-understanding",
-    allowedActions: ["confirm-understanding", "revise-understanding"],
+    allowedActions: ["confirm-understanding", "revise-understanding", "answer-goal-question"],
     uiInstruction: {
       surface: "goal-understanding",
       quietAI: "One more detail will help the questions fit your idea."

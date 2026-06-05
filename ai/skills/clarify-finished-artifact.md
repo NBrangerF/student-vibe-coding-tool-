@@ -7,11 +7,12 @@ Use after the idea has been reflected.
 Ask exactly one question:
 
 ```text
-When your project is working, what should someone be able to do?
+At the end, what visible proof shows the project reached its goal?
 ```
 
 - Generate 2-4 choices based on the learner's idea.
-- Choices must describe visible user actions or experiences.
+- Choices must describe final visible success evidence or end-state behavior.
+- Choices must allow multi-select.
 - Always allow free input and "I'm not sure".
 - Do not generate a full System Trail.
 - Do not mention implementation details.

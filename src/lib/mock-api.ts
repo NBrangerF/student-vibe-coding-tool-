@@ -17,6 +17,7 @@ import {
 import {
   Checkpoint,
   DraftSystemTrail,
+  GoalClarificationQuestion,
   GoalInterviewTurn,
   PlanningQuestion,
   PlanningUnderstandingResponse,
@@ -73,18 +74,28 @@ export async function mockPostJson<TResponse>(url: string, body: unknown): Promi
     const project = payload.project as Project | undefined;
     const session = payload.session as PlanningSession | undefined;
     const extraDetail = String(payload.extraDetail ?? "").trim();
+    const answer = String(payload.answer ?? "").trim();
     if (!project || !session) throw new Error("project and session are required");
-    return delay(confirmGoalUnderstanding({ project, session, extraDetail }) as PlanningUnderstandingResponse as TResponse);
+    return delay(confirmGoalUnderstanding({
+      project,
+      session,
+      action: payload.action as "confirm" | "revise" | "answer-goal-question" | undefined,
+      extraDetail,
+      answer,
+      question: payload.question as GoalClarificationQuestion | null | undefined,
+      source: payload.source as PlanningResponseSource | undefined
+    }) as PlanningUnderstandingResponse as TResponse);
   }
 
   if (url === "/api/planning/session/start") {
     const learnerIdea = String(payload.learnerIdea ?? payload.idea ?? "").trim();
     if (!learnerIdea) throw new Error("learnerIdea is required");
     const started = startCoPlanning(learnerIdea);
+    const ready = Boolean(started.goalUnderstanding.goalReadiness?.readyForConfirmation);
     return delay({
       sessionId: started.planningSession.id,
-      status: "GOAL_UNDERSTANDING_GENERATED",
-      allowedActions: ["confirm-understanding"],
+      status: ready ? "GOAL_UNDERSTANDING_GENERATED" : "GOAL_UNDERSTANDING_NEEDS_CLARIFICATION",
+      allowedActions: ready ? ["confirm-understanding", "revise-understanding"] : ["answer-goal-question", "revise-understanding"],
       uiInstruction: {
         surface: "goal-understanding",
         quietAI: started.assistantMessage

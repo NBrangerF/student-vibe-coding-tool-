@@ -7,6 +7,11 @@ import {
   DraftSystemNode,
   DraftSystemTrail,
   DraftTrailResponse,
+  GoalClarificationQuestion,
+  GoalClarificationTurn,
+  GoalContract,
+  GoalContractField,
+  GoalReadiness,
   GoalUnderstanding,
   GoalInterviewResponse,
   GoalInterviewTurn,
@@ -981,6 +986,149 @@ export function inferGoalUnderstanding(idea: string): GoalUnderstanding {
   };
 }
 
+function goalChoice(id: string, label: string, detail: string): PlanningChoice {
+  return { id, label, detail, visibleBehavior: detail };
+}
+
+function hasSpecificSignal(text: string, patterns: RegExp[]): boolean {
+  return patterns.some((pattern) => pattern.test(text));
+}
+
+function contractQuestion(field: GoalContractField, understanding: GoalUnderstanding): GoalClarificationQuestion {
+  const lens = understanding.planningLens;
+  if (field === "primaryObject") {
+    return {
+      id: "goal-primary-object",
+      prompt: "What is the main thing your project works with?",
+      choices: [
+        goalChoice("object-character", "A character or game object", "The project is about a visible character, player, or object."),
+        goalChoice("object-picture", "A picture, drawing, or design", "The project changes or shows an image."),
+        goalChoice("object-list", "Tasks, items, or a list", "The project helps people track things.")
+      ],
+      allowFreeText: true,
+      allowNotSure: true,
+      targets: ["primaryObject"]
+    };
+  }
+
+  if (field === "coreMechanic") {
+    const gameChoices = lens === "game-interaction"
+      ? [
+        goalChoice("mechanic-jump", "The player jumps or avoids something", "The player repeats an action to avoid a challenge."),
+        goalChoice("mechanic-choose", "The player makes choices", "Choices change what happens in the game."),
+        goalChoice("mechanic-score", "The player earns points", "The main loop changes the score.")
+      ]
+      : [
+        goalChoice("mechanic-change", "The user changes one thing", "A visible part changes after the user's action."),
+        goalChoice("mechanic-choose-result", "The user chooses and sees a result", "A choice leads to a visible result."),
+        goalChoice("mechanic-react", "The system reacts", "The project responds after the user acts.")
+      ];
+    return {
+      id: "goal-core-mechanic",
+      prompt: lens === "game-interaction" ? "What should the player do again and again?" : "What is the main action that makes your project work?",
+      choices: gameChoices,
+      allowFreeText: true,
+      allowNotSure: true,
+      targets: ["coreMechanic"]
+    };
+  }
+
+  return {
+    id: "goal-end-state",
+    prompt: "How will someone know the project reached its goal?",
+    choices: [
+      goalChoice("end-clear-result", "A clear result appears", "The user sees the result they were trying to make."),
+      goalChoice("end-score-or-win", "A score, win, or finish state appears", "The project shows progress or completion."),
+      goalChoice("end-save-share", "The user can save or share it", "The final result can be kept or shown to someone.")
+    ],
+    allowFreeText: true,
+    allowNotSure: true,
+    targets: ["endState"]
+  };
+}
+
+function inferGoalContract(idea: string, understanding: GoalUnderstanding, turns: GoalClarificationTurn[] = []): GoalContract {
+  const combined = [idea, ...turns.map((turn) => turn.answer)].join(" ").replace(/\s+/g, " ").trim();
+  const lower = combined.toLowerCase();
+  const vague = /^(i want to make\s+)?(a\s+)?(game|app|website|something|something fun|thing)\.?$/i.test(combined.trim());
+
+  const primaryObject = vague && understanding.planningLens === "generic-custom-system"
+    ? null
+    : understanding.primaryObject;
+  const actor = vague && understanding.planningLens === "generic-custom-system"
+    ? null
+    : understanding.userActor;
+
+  let coreMechanic: string | null = null;
+  if (understanding.planningLens === "creative-transform-tool") coreMechanic = "apply a visual style to a drawing";
+  if (hasSpecificSignal(lower, [/feed|feeding|happiness|happy|care|react/, /jump|avoid|score|collect|choose|unlock|move/, /style|filter|transform|change|upload|draw/, /hint|explain|check|revise/])) {
+    coreMechanic = understanding.desiredChange ?? "user action changes the project";
+  }
+  const mechanicTurn = turns.find((turn) => turn.targets.includes("coreMechanic"));
+  if (mechanicTurn) coreMechanic = mechanicTurn.answer;
+
+  let endState: string | null = null;
+  if (understanding.planningLens === "creative-transform-tool") endState = "styled drawing preview";
+  if (hasSpecificSignal(lower, [/goal is|win|finish|complete|end|keep|save|share|preview|result|for \d+|score|points|happy for/])) {
+    endState = understanding.likelyOutput ?? "a visible result";
+  }
+  const endTurn = turns.find((turn) => turn.targets.includes("endState"));
+  if (endTurn) endState = endTurn.answer;
+
+  const primaryTurn = turns.find((turn) => turn.targets.includes("primaryObject"));
+  const actorTurn = turns.find((turn) => turn.targets.includes("actor"));
+
+  return {
+    learnerGoal: combined,
+    primaryObject: primaryTurn?.answer ?? primaryObject,
+    actor: actorTurn?.answer ?? actor,
+    coreMechanic,
+    endState
+  };
+}
+
+function goalReadiness(contract: GoalContract, understanding: GoalUnderstanding): GoalReadiness {
+  const missingFields: GoalContractField[] = [];
+  if (!contract.learnerGoal.trim()) missingFields.push("learnerGoal");
+  if (!contract.primaryObject) missingFields.push("primaryObject");
+  if (!contract.actor) missingFields.push("actor");
+  if (!contract.coreMechanic) missingFields.push("coreMechanic");
+  if (!contract.endState) missingFields.push("endState");
+  const readyForConfirmation = missingFields.length === 0;
+  const confidence: GoalReadiness["confidence"] = readyForConfirmation ? "high" : missingFields.length <= 2 ? "medium" : "low";
+  const nextTarget = missingFields.includes("primaryObject")
+    ? "primaryObject"
+    : missingFields.includes("coreMechanic")
+      ? "coreMechanic"
+      : missingFields.includes("endState")
+        ? "endState"
+        : missingFields[0];
+
+  return {
+    readyForConfirmation,
+    missingFields,
+    confidence,
+    rationale: readyForConfirmation
+      ? "The goal has a main object, actor, core mechanic, and end state."
+      : "The goal needs one more concrete part before planning the system trail.",
+    nextQuestion: nextTarget ? contractQuestion(nextTarget, understanding) : null
+  };
+}
+
+export function buildGoalClarification(idea: string, turns: GoalClarificationTurn[] = []): GoalUnderstanding {
+  const combinedIdea = [idea, ...turns.map((turn) => turn.answer)].join(" ").trim();
+  const understanding = inferGoalUnderstanding(combinedIdea || idea);
+  const contract = inferGoalContract(idea, understanding, turns);
+  const readiness = goalReadiness(contract, understanding);
+  return {
+    ...understanding,
+    confidence: readiness.confidence,
+    goalContract: contract,
+    goalReadiness: readiness,
+    quietAI: readiness.nextQuestion?.prompt ?? "This goal is clear enough to confirm before planning."
+  };
+}
+
 const planningQuestionOrder: PlanningQuestion["id"][] = [
   "finished-artifact",
   "first-user-action",
@@ -1235,19 +1383,21 @@ export function getPlanningQuestion(session: PlanningSession): PlanningQuestion 
     choices: generatePlanningChoices(session.idea, nextId, understanding),
     allowFreeText: true,
     allowNotSure: true,
+    allowMultiple: true,
     boundaryNote
   };
 }
 
 export function createPlanningSession(projectId: string, idea: string): PlanningSession {
-  const goalUnderstanding = inferGoalUnderstanding(idea);
+  const goalUnderstanding = buildGoalClarification(idea);
   return {
     id: `planning-${slugId(projectId)}-${Date.now()}`,
     projectId,
     idea: idea.trim(),
-    status: "goal_understanding_generated",
+    status: goalUnderstanding.goalReadiness?.readyForConfirmation ? "goal_understanding_generated" : "goal_understanding_needs_clarification",
     responses: [],
     candidateParts: [],
+    goalClarificationTurns: [],
     goalUnderstanding,
     createdAt: ISO_STUB,
     updatedAt: ISO_STUB
@@ -1272,10 +1422,35 @@ export function startCoPlanning(idea: string): PlanningStartResponse {
 export function confirmGoalUnderstanding(input: {
   project: Project;
   session: PlanningSession;
+  action?: "confirm" | "revise" | "answer-goal-question";
   extraDetail?: string;
+  answer?: string;
+  question?: GoalClarificationQuestion | null;
+  source?: PlanningResponseSource;
 }): PlanningUnderstandingResponse {
-  const idea = [input.session.idea, input.extraDetail].filter(Boolean).join(" ");
-  const goalUnderstanding = input.extraDetail ? inferGoalUnderstanding(idea) : input.session.goalUnderstanding ?? inferGoalUnderstanding(input.session.idea);
+  const action = input.action ?? (input.extraDetail ? "revise" : "confirm");
+  const turns = [...(input.session.goalClarificationTurns ?? [])];
+  if (action === "answer-goal-question") {
+    const question = input.question ?? input.session.goalUnderstanding?.goalReadiness?.nextQuestion;
+    const answer = input.answer?.trim() ?? input.extraDetail?.trim() ?? "";
+    if (!question || !answer) throw new Error("goal question and answer are required");
+    turns.push({
+      id: `goal-turn-${turns.length + 1}`,
+      questionId: question.id,
+      prompt: question.prompt,
+      answer,
+      source: input.source ?? "choice",
+      targets: question.targets,
+      createdAt: ISO_STUB
+    });
+  }
+  const idea = action === "revise" && input.extraDetail ? [input.session.idea, input.extraDetail].join(" ") : input.session.idea;
+  const goalUnderstanding = action === "revise"
+    ? buildGoalClarification(idea)
+    : buildGoalClarification(idea, turns);
+  if (action === "confirm" && !goalUnderstanding.goalReadiness?.readyForConfirmation) {
+    throw new Error("Answer the goal question before confirming this goal.");
+  }
   const project: Project = {
     ...input.project,
     title: goalUnderstanding.projectTitle,
@@ -1286,11 +1461,16 @@ export function confirmGoalUnderstanding(input: {
     ...input.session,
     idea,
     goalUnderstanding,
-    status: "goal_understanding_confirmed",
+    goalClarificationTurns: turns,
+    status: action === "confirm"
+      ? "goal_understanding_confirmed"
+      : goalUnderstanding.goalReadiness?.readyForConfirmation
+        ? "goal_understanding_generated"
+        : "goal_understanding_needs_clarification",
     updatedAt: ISO_STUB
   };
-  const currentQuestion = getPlanningQuestion(planningSession);
-  if (!currentQuestion) throw new Error("Planning question could not be created");
+  const currentQuestion = action === "confirm" ? getPlanningQuestion(planningSession) : null;
+  if (action === "confirm" && !currentQuestion) throw new Error("Planning question could not be created");
 
   return {
     engineSource: "fallback",
@@ -1298,7 +1478,9 @@ export function confirmGoalUnderstanding(input: {
     planningSession,
     goalUnderstanding,
     currentQuestion,
-    assistantMessage: "Great. Now we will ask one planning question at a time."
+    assistantMessage: action === "confirm"
+      ? "Great. Now we will ask one planning question at a time."
+      : goalUnderstanding.goalReadiness?.nextQuestion?.prompt ?? "This goal is ready for you to confirm."
   };
 }
 

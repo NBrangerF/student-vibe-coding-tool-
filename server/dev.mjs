@@ -3,7 +3,7 @@ import "./load-env.mjs";
 
 const commands = [
   { name: "api", command: "node", args: ["server/api-server.mjs"] },
-  { name: "vite", command: "vite", args: ["--host", "0.0.0.0"] }
+  { name: "preview", command: "node", args: ["server/local-preview.mjs"] }
 ];
 
 const children = commands.map(({ name, command, args }) => {

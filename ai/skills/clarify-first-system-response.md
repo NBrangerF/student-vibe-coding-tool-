@@ -7,11 +7,12 @@ Use after the learner has clarified the first user action.
 Ask exactly one question:
 
 ```text
-What should the system show or do after that?
+What is the simplest visible first milestone that lets the learner enter this system?
 ```
 
 - Use the learner's previous answer as context.
-- Choices must describe visible system responses.
+- Choices must describe small first-milestone entry behaviors.
+- Choices must allow multi-select.
 - Avoid code words such as state, function, component, variable, or API.
 - Do not generate the full trail.
 

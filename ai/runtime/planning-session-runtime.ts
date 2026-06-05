@@ -1,11 +1,11 @@
 import type { CandidateSystemPart, DraftSystemTrail, PlanningQuestion, PlanningResponseSource, PlanningSession, Project } from "@/lib/types";
 import {
   answerPlanningQuestion,
+  buildGoalClarification,
   confirmGoalUnderstanding,
   confirmDraftTrail,
   createDraftTrailFromCandidates,
   getPlanningQuestion,
-  inferGoalUnderstanding,
   reviewDraftTrail,
   startCoPlanning
 } from "@/lib/mvp-engine";
@@ -74,7 +74,7 @@ function goalIntakeResult(project: Project): GoalIntakeResult {
 }
 
 function goalUnderstandingResult(project: Project): GoalUnderstandingResult {
-  const goalUnderstanding = inferGoalUnderstanding(project.originalIdea);
+  const goalUnderstanding = buildGoalClarification(project.originalIdea);
   return {
     skill: "goal-understanding",
     goalUnderstanding,
@@ -155,14 +155,15 @@ export function advanceAgentPlanningSession(input: PlanningSessionAdvanceInput):
     const confirmed = confirmGoalUnderstanding({
       project: input.project,
       session: input.session,
+      action: input.action === "confirm-understanding" ? "confirm" : "revise",
       extraDetail: String(input.payload?.extraDetail ?? "")
     });
     if (input.action === "revise-understanding" && input.payload?.extraDetail) {
       return response({
         project: confirmed.project,
-        session: {
+      session: {
           ...confirmed.planningSession,
-          status: "goal_understanding_generated"
+          status: confirmed.planningSession.status
         },
         data: {
           skill: "goal-understanding",
@@ -174,7 +175,34 @@ export function advanceAgentPlanningSession(input: PlanningSessionAdvanceInput):
     return response({
       project: confirmed.project,
       session: confirmed.planningSession,
-      data: questionResult(confirmed.currentQuestion)
+      data: confirmed.currentQuestion
+        ? questionResult(confirmed.currentQuestion)
+        : {
+          skill: "goal-understanding",
+          goalUnderstanding: confirmed.goalUnderstanding,
+          quietAI: confirmed.assistantMessage
+        }
+    });
+  }
+
+  if (input.action === "answer-goal-question") {
+    if (!input.project) throw new Error("project is required");
+    const answered = confirmGoalUnderstanding({
+      project: input.project,
+      session: input.session,
+      action: "answer-goal-question",
+      answer: String(input.payload?.answer ?? ""),
+      question: input.payload?.question as never,
+      source: input.payload?.source as never
+    });
+    return response({
+      project: answered.project,
+      session: answered.planningSession,
+      data: {
+        skill: "goal-understanding",
+        goalUnderstanding: answered.goalUnderstanding,
+        quietAI: answered.assistantMessage
+      }
     });
   }
 

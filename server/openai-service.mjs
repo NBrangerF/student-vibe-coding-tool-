@@ -1,7 +1,19 @@
+import http from "node:http";
 import https from "node:https";
 
-const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
-const OPENAI_TIMEOUT_MS = Number(process.env.OPENAI_TIMEOUT_MS ?? 12000);
+const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com";
+const DEFAULT_OPENAI_MODEL = "gpt-5.5";
+const OPENAI_TIMEOUT_MS = Number(process.env.OPENAI_TIMEOUT_MS ?? 30000);
+
+function resolveOpenAIResponsesUrl() {
+  if (process.env.OPENAI_RESPONSES_URL) return new URL(process.env.OPENAI_RESPONSES_URL);
+
+  const base = new URL(process.env.OPENAI_BASE_URL || DEFAULT_OPENAI_BASE_URL);
+  const normalizedPath = base.pathname.replace(/\/+$/u, "");
+  base.pathname = normalizedPath.endsWith("/v1") ? `${normalizedPath}/responses` : `${normalizedPath}/v1/responses`;
+  base.search = "";
+  return base;
+}
 
 function compactText(value, maxLength = 160) {
   const text = String(value ?? "")
@@ -46,17 +58,18 @@ function responseText(data) {
 }
 
 function postOpenAIJson(payload, apiKey) {
-  const target = new URL(OPENAI_RESPONSES_URL);
+  const target = resolveOpenAIResponsesUrl();
   const body = JSON.stringify(payload);
+  const transport = target.protocol === "http:" ? http : https;
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       request.destroy(new Error("OpenAI request timed out"));
     }, OPENAI_TIMEOUT_MS);
-    const request = https.request(
+    const request = transport.request(
       {
         hostname: target.hostname,
-        port: 443,
-        path: target.pathname,
+        port: target.port || (target.protocol === "http:" ? 80 : 443),
+        path: `${target.pathname}${target.search}`,
         method: "POST",
         headers: {
           Authorization: `Bearer ${apiKey}`,
@@ -95,7 +108,7 @@ export async function callStructuredOpenAI({ name, schema, system, user }) {
   }
 
   const response = await postOpenAIJson({
-    model: process.env.OPENAI_MODEL || "gpt-5.4-mini",
+    model: process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL,
     input: [
       { role: "system", content: system },
       { role: "user", content: user }

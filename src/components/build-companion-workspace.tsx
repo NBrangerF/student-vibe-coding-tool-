@@ -247,6 +247,15 @@ function candidateSourceLabel(source: CandidateSystemPart["source"]) {
   return "AI suggested";
 }
 
+function goalFieldLabel(field: string) {
+  if (field === "learnerGoal") return "Goal";
+  if (field === "primaryObject") return "Main thing";
+  if (field === "actor") return "Who uses it";
+  if (field === "coreMechanic") return "Core mechanic";
+  if (field === "endState") return "End state";
+  return field;
+}
+
 export function BuildCompanionWorkspace() {
   const [activeStage, setActiveStage] = useState<StudioStage>("idea");
   const [uiLanguage, setUiLanguage] = useState<UiLanguage>("zh");
@@ -257,6 +266,7 @@ export function BuildCompanionWorkspace() {
   const [understandingDetails, setUnderstandingDetails] = useState("");
   const [planningQuestion, setPlanningQuestion] = useState<PlanningQuestion | null>(null);
   const [planningFreeInput, setPlanningFreeInput] = useState("");
+  const [planningSelectedChoiceIds, setPlanningSelectedChoiceIds] = useState<string[]>([]);
   const [draftTrail, setDraftTrail] = useState<DraftSystemTrail | null>(null);
   const [firstDraftNodeId, setFirstDraftNodeId] = useState("");
   const [newCandidateTitle, setNewCandidateTitle] = useState("");
@@ -308,6 +318,10 @@ export function BuildCompanionWorkspace() {
     window.localStorage.setItem(UI_LANGUAGE_STORAGE_KEY, uiLanguage);
     document.documentElement.lang = uiLanguage === "zh" ? "zh-CN" : "en";
   }, [uiLanguage]);
+
+  useEffect(() => {
+    setPlanningSelectedChoiceIds([]);
+  }, [planningQuestion?.id]);
 
   useEffect(() => {
     const stored = window.localStorage.getItem(STORAGE_KEY);
@@ -445,6 +459,7 @@ export function BuildCompanionWorkspace() {
     setUnderstandingDetails("");
     setPlanningQuestion(null);
     setPlanningFreeInput("");
+    setPlanningSelectedChoiceIds([]);
     setDraftTrail(null);
     setFirstDraftNodeId("");
     setNewCandidateTitle("");
@@ -517,6 +532,34 @@ export function BuildCompanionWorkspace() {
     }
   }
 
+  async function answerGoalQuestion(answer: string, source: "choice" | "free-input" | "not-sure") {
+    if (!project || !planningSession || !goalUnderstanding?.goalReadiness?.nextQuestion) return;
+    const cleanAnswer = answer.trim();
+    if (!cleanAnswer) return;
+    setIsBusy(true);
+    setError(null);
+    try {
+      const response = await postJson<PlanningUnderstandingResponse>("/api/planning/understanding", {
+        project,
+        session: planningSession,
+        action: "answer-goal-question",
+        question: goalUnderstanding.goalReadiness.nextQuestion,
+        answer: cleanAnswer,
+        source
+      });
+      setProject(response.project);
+      setPlanningSession(response.planningSession);
+      setGoalUnderstanding(response.goalUnderstanding);
+      setPlanningQuestion(response.currentQuestion ?? null);
+      setUnderstandingDetails("");
+      setAssistantNote(response.assistantMessage);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Could not update the goal");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
   async function answerPlanning(answer: string, source: "choice" | "free-input" | "not-sure") {
     if (!planningSession || !planningQuestion) return;
     const cleanAnswer = answer.trim();
@@ -533,12 +576,33 @@ export function BuildCompanionWorkspace() {
       setPlanningSession(response.planningSession);
       setPlanningQuestion(response.currentQuestion ?? null);
       setPlanningFreeInput("");
+      setPlanningSelectedChoiceIds([]);
       setAssistantNote(response.assistantMessage);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Could not save planning answer");
     } finally {
       setIsBusy(false);
     }
+  }
+
+  function togglePlanningChoice(choiceId: string) {
+    if (!planningQuestion?.allowMultiple) {
+      setPlanningSelectedChoiceIds([choiceId]);
+      return;
+    }
+    setPlanningSelectedChoiceIds((current) => current.includes(choiceId)
+      ? current.filter((id) => id !== choiceId)
+      : [...current, choiceId]);
+  }
+
+  function submitSelectedPlanningChoices() {
+    if (!planningQuestion) return;
+    const selectedChoices = planningQuestion.choices.filter((choice) => planningSelectedChoiceIds.includes(choice.id));
+    if (!selectedChoices.length) return;
+    const answer = selectedChoices
+      .map((choice) => choice.detail || choice.visibleBehavior ? `${choice.label}: ${choice.detail || choice.visibleBehavior}` : choice.label)
+      .join("; ");
+    void answerPlanning(answer, "choice");
   }
 
   function updateCandidate(partId: string, patch: Partial<CandidateSystemPart>) {
@@ -930,7 +994,7 @@ export function BuildCompanionWorkspace() {
   function canOpen(stage: StudioStage) {
     if (stage === "idea") return true;
     if (stage === "understanding") return Boolean(project && planningSession && goalUnderstanding && planningSession.status !== "completed");
-    if (stage === "coplan") return Boolean(project && planningSession && planningSession.status !== "completed" && planningSession.status !== "goal_understanding_generated");
+    if (stage === "coplan") return Boolean(project && planningSession && planningSession.status !== "completed" && !["goal_understanding_generated", "goal_understanding_needs_clarification"].includes(planningSession.status));
     if (stage === "draft") return Boolean(planningSession && draftTrail && planningSession.status !== "completed");
     if (stage === "first") return Boolean(planningSession && draftTrail && planningSession.status === "draft_trail_reviewed");
     if (stage === "trail") return Boolean(project?.systemTrail.nodes.length && planningSession?.status === "completed");
@@ -1078,11 +1142,28 @@ export function BuildCompanionWorkspace() {
 
   function renderGoalUnderstanding() {
     if (!project || !planningSession || !goalUnderstanding) return renderIdeaStudio();
-    const noticed = [
-      { label: "Object", value: goalUnderstanding.primaryObject },
-      { label: "Change", value: goalUnderstanding.desiredChange },
-      { label: "Result", value: goalUnderstanding.likelyOutput }
+    const goalContract = goalUnderstanding.goalContract ?? {
+      learnerGoal: goalUnderstanding.learnerFacingRestatement,
+      primaryObject: goalUnderstanding.primaryObject,
+      actor: goalUnderstanding.userActor,
+      coreMechanic: goalUnderstanding.desiredChange,
+      endState: goalUnderstanding.likelyOutput
+    };
+    const readiness = goalUnderstanding.goalReadiness ?? {
+      readyForConfirmation: goalUnderstanding.confidence !== "low",
+      missingFields: [],
+      confidence: goalUnderstanding.confidence,
+      rationale: "Check this goal before planning.",
+      nextQuestion: null
+    };
+    const contractSlots = [
+      { label: "Goal", value: goalContract.learnerGoal, field: "learnerGoal" },
+      { label: "Main thing", value: goalContract.primaryObject, field: "primaryObject" },
+      { label: "Who uses it", value: goalContract.actor, field: "actor" },
+      { label: "Core mechanic", value: goalContract.coreMechanic, field: "coreMechanic" },
+      { label: "End state", value: goalContract.endState, field: "endState" }
     ];
+    const goalQuestion = readiness.nextQuestion;
 
     return (
       <section className="understanding-screen">
@@ -1112,13 +1193,23 @@ export function BuildCompanionWorkspace() {
               </div>
             </div>
 
-            <div className="understanding-slots" aria-label={isZh ? "系统注意到的内容" : "What the system noticed"}>
-              {noticed.map((item) => (
-                <article key={item.label}>
+            <div className="goal-readiness-row">
+              <span className={readiness.readyForConfirmation ? "ready" : "not-ready"}>
+                {readiness.readyForConfirmation ? t("Ready to confirm") : t("Needs one more detail")}
+              </span>
+              <p>{t(readiness.rationale)}</p>
+            </div>
+
+            <div className="understanding-slots goal-contract-grid" aria-label={isZh ? "目标合同" : "Goal contract"}>
+              {contractSlots.map((item) => {
+                const missing = (readiness.missingFields as string[]).includes(item.field);
+                return (
+                <article key={item.label} className={missing ? "missing" : ""}>
                   <small>{t(item.label)}</small>
                   <strong>{t(item.value || "Not sure yet")}</strong>
+                  {missing && <em>{t("Still unclear")}</em>}
                 </article>
-              ))}
+              );})}
             </div>
 
             {!!goalUnderstanding.safetyOrBoundaryNotes.length && (
@@ -1128,16 +1219,34 @@ export function BuildCompanionWorkspace() {
               </p>
             )}
 
-            {goalUnderstanding.confidence === "low" && (
-              <div className="understanding-clarify">
+            {goalQuestion && (
+              <div className="understanding-clarify goal-question-panel">
                 <strong>{t("I’m not fully sure yet.")}</strong>
-                <p>{t("What is the main thing your project works with?")}</p>
+                <p>{t(goalQuestion.prompt)}</p>
                 <div>
-                  {["A picture, drawing, or design", "A character or game object", "Tasks, items, or a list"].map((choice) => (
-                    <button key={choice} type="button" onClick={() => setUnderstandingDetails(choice)}>
-                      {t(choice)}
+                  {goalQuestion.choices.map((choice) => (
+                    <button key={choice.id} type="button" onClick={() => answerGoalQuestion(choice.label, "choice")} disabled={isBusy}>
+                      <strong>{t(choice.label)}</strong>
+                      {(choice.detail || choice.visibleBehavior) && <small>{t(choice.detail || choice.visibleBehavior)}</small>}
                     </button>
                   ))}
+                </div>
+                <label className="goal-question-input">
+                  <span>{t("Type my answer")}</span>
+                  <textarea
+                    value={understandingDetails}
+                    onChange={(event) => setUnderstandingDetails(event.target.value)}
+                    placeholder={t("For example: the player feeds the pet and tries to keep it happy...")}
+                    maxLength={360}
+                  />
+                </label>
+                <div className="understanding-actions">
+                  <button className="open-secondary" type="button" onClick={() => answerGoalQuestion(understandingDetails, "free-input")} disabled={isBusy || !understandingDetails.trim()}>
+                    {t("Add mine")}
+                  </button>
+                  <button className="open-secondary quiet" type="button" onClick={() => answerGoalQuestion("I'm not sure yet", "not-sure")} disabled={isBusy}>
+                    {t("I'm not sure")}
+                  </button>
                 </div>
               </div>
             )}
@@ -1153,7 +1262,7 @@ export function BuildCompanionWorkspace() {
             </label>
 
             <div className="understanding-actions">
-              <button className="open-primary big" type="button" onClick={() => confirmUnderstanding("confirm")} disabled={isBusy}>
+              <button className="open-primary big" type="button" onClick={() => confirmUnderstanding("confirm")} disabled={isBusy || !readiness.readyForConfirmation}>
                 {t("Yes, start planning")}
                 <ArrowRight size={19} />
               </button>
@@ -1211,11 +1320,18 @@ export function BuildCompanionWorkspace() {
   }
 
   function renderPlanningChoice(choice: PlanningChoice) {
+    const selected = planningSelectedChoiceIds.includes(choice.id);
     return (
-      <button key={choice.id} type="button" onClick={() => answerPlanning(choice.label, "choice")} disabled={isBusy}>
+      <button
+        key={choice.id}
+        type="button"
+        className={selected ? "selected" : ""}
+        onClick={() => togglePlanningChoice(choice.id)}
+        disabled={isBusy}
+      >
         <strong>{t(choice.label)}</strong>
         {(choice.detail || choice.visibleBehavior) && <small>{t(choice.detail || choice.visibleBehavior)}</small>}
-        <ArrowRight size={16} />
+        {selected ? <Check size={16} /> : <Plus size={16} />}
       </button>
     );
   }
@@ -1237,6 +1353,17 @@ export function BuildCompanionWorkspace() {
           <div className="planning-choice-grid">
             {planningQuestion.choices.map(renderPlanningChoice)}
           </div>
+        )}
+        {!!planningQuestion.choices.length && (
+          <button
+            className="open-primary"
+            type="button"
+            onClick={submitSelectedPlanningChoices}
+            disabled={isBusy || planningSelectedChoiceIds.length === 0}
+          >
+            {planningQuestion.allowMultiple ? t("Use selected choices") : t("Use this choice")}
+            <ArrowRight size={17} />
+          </button>
         )}
         <div className="planning-free-row">
           <input

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   answerPlanningQuestion,
+  buildGoalClarification,
   confirmDraftTrail,
   createDraftTrailFromCandidates,
   createProjectFromIdea,
@@ -13,7 +14,8 @@ import {
   logicChainForNode,
   planMilestone,
   reviewDraftTrail,
-  reviewChecklist
+  reviewChecklist,
+  startCoPlanning
 } from "@/lib/mvp-engine";
 import { ChecklistItem } from "@/lib/types";
 
@@ -66,6 +68,42 @@ describe("open-ended systems-first MVP engine", () => {
     expect(understanding.likelyOutput).toContain("styled");
   });
 
+  it("does not mark an immature game idea ready for confirmation", () => {
+    const understanding = buildGoalClarification("I want to make a game");
+
+    expect(understanding.goalReadiness?.readyForConfirmation).toBe(false);
+    expect(understanding.goalReadiness?.missingFields).toEqual(expect.arrayContaining(["coreMechanic", "endState"]));
+    expect(["coreMechanic", "endState"]).toContain(understanding.goalReadiness?.nextQuestion?.targets[0]);
+  });
+
+  it("marks a specific pet-game goal ready when it has a mechanic and end state", () => {
+    const understanding = buildGoalClarification("I want to make a pet game where feeding the pet changes happiness and the goal is to keep it happy for 3 days");
+
+    expect(understanding.goalReadiness?.readyForConfirmation).toBe(true);
+    expect(understanding.goalContract?.primaryObject).toBeTruthy();
+    expect(understanding.goalContract?.coreMechanic).toBeTruthy();
+    expect(understanding.goalContract?.endState).toBeTruthy();
+  });
+
+  it("asks for the main missing pieces when an idea is too vague", () => {
+    const understanding = buildGoalClarification("I want to make something fun");
+
+    expect(understanding.goalReadiness?.readyForConfirmation).toBe(false);
+    expect(understanding.goalReadiness?.missingFields).toEqual(expect.arrayContaining(["primaryObject", "coreMechanic", "endState"]));
+    expect(understanding.goalReadiness?.nextQuestion).toMatchObject({ id: "goal-primary-object" });
+  });
+
+  it("creates a ready goal contract for drawing style ideas", () => {
+    const understanding = buildGoalClarification("我想要做一个自动给我的 drawing 添加风格的软件");
+
+    expect(understanding.goalReadiness?.readyForConfirmation).toBe(true);
+    expect(understanding.goalContract).toMatchObject({
+      primaryObject: "drawing",
+      coreMechanic: "apply a visual style to a drawing",
+      endState: "styled drawing preview"
+    });
+  });
+
   it("asks creative-tool co-planning questions instead of generic app verbs", () => {
     const understanding = inferGoalUnderstanding("我想要做一个自动给我的 drawing 添加风格的软件");
     const first = generatePlanningChoices(understanding.originalIdea, "finished-artifact", understanding);
@@ -105,6 +143,56 @@ describe("open-ended systems-first MVP engine", () => {
     const confirmed = confirmGoalUnderstanding({ project: started, session });
     expect(confirmed.planningSession.status).toBe("goal_understanding_confirmed");
     expect(confirmed.currentQuestion?.prompt).toBe("How should the drawing or image get into the tool?");
+  });
+
+  it("blocks goal confirmation until the goal contract is ready", () => {
+    const project = createProjectFromIdea("I want to make a game");
+    const started = startCoPlanning(project.originalIdea);
+
+    expect(started.planningSession.status).toBe("goal_understanding_needs_clarification");
+    expect(() => confirmGoalUnderstanding({
+      project,
+      session: started.planningSession,
+      action: "confirm"
+    })).toThrow(/Answer the goal question/);
+  });
+
+  it("can clarify an immature goal across goal-question turns before confirmation", () => {
+    const project = createProjectFromIdea("I want to make a game");
+    const started = startCoPlanning(project.originalIdea);
+    const firstQuestion = started.goalUnderstanding.goalReadiness?.nextQuestion;
+    expect(firstQuestion).toBeTruthy();
+
+    const withMechanic = confirmGoalUnderstanding({
+      project,
+      session: started.planningSession,
+      action: "answer-goal-question",
+      question: firstQuestion,
+      answer: "The player feeds the pet and happiness changes.",
+      source: "free-input"
+    });
+    expect(withMechanic.planningSession.status).toBe("goal_understanding_needs_clarification");
+    expect(withMechanic.goalUnderstanding.goalReadiness?.missingFields).toContain("endState");
+
+    const secondQuestion = withMechanic.goalUnderstanding.goalReadiness?.nextQuestion;
+    const ready = confirmGoalUnderstanding({
+      project: withMechanic.project,
+      session: withMechanic.planningSession,
+      action: "answer-goal-question",
+      question: secondQuestion,
+      answer: "The goal is to keep the pet happy for 3 days.",
+      source: "free-input"
+    });
+    expect(ready.planningSession.status).toBe("goal_understanding_generated");
+    expect(ready.goalUnderstanding.goalReadiness?.readyForConfirmation).toBe(true);
+
+    const confirmed = confirmGoalUnderstanding({
+      project: ready.project,
+      session: ready.planningSession,
+      action: "confirm"
+    });
+    expect(confirmed.planningSession.status).toBe("goal_understanding_confirmed");
+    expect(confirmed.currentQuestion).toBeTruthy();
   });
 
   it("creates creative-tool candidate parts from the understood idea", () => {

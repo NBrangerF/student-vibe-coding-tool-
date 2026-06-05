@@ -4,7 +4,7 @@ export type SystemEdgeType = "sequence" | "dependency" | "feedback-loop";
 export type ChecklistStatus = "unchecked" | "yes" | "not-yet" | "not-sure";
 export type ChecklistFeedbackTag = "clear" | "too-vague" | "missing-step";
 export type ChecklistSource = "student" | "ai-suggested";
-export type AiEngineSource = "openai" | "fallback";
+export type AiEngineSource = "openai" | "fallback" | "local-gate";
 export type PlanningLens =
   | "game-interaction"
   | "creative-transform-tool"
@@ -125,6 +125,35 @@ export interface GoalUnderstanding {
     questionSequence: string[];
   };
   quietAI: string;
+  goalContract?: GoalContract;
+  goalReadiness?: GoalReadiness;
+}
+
+export type GoalContractField = "learnerGoal" | "primaryObject" | "actor" | "coreMechanic" | "endState";
+
+export interface GoalContract {
+  learnerGoal: string;
+  primaryObject: string | null;
+  actor: string | null;
+  coreMechanic: string | null;
+  endState: string | null;
+}
+
+export interface GoalClarificationQuestion {
+  id: string;
+  prompt: string;
+  choices: PlanningChoice[];
+  allowFreeText: boolean;
+  allowNotSure: boolean;
+  targets: GoalContractField[];
+}
+
+export interface GoalReadiness {
+  readyForConfirmation: boolean;
+  missingFields: GoalContractField[];
+  confidence: ConfidenceLevel;
+  rationale: string;
+  nextQuestion: GoalClarificationQuestion | null;
 }
 
 export interface PlanningChoice {
@@ -144,6 +173,7 @@ export interface PlanningQuestion {
   choices: PlanningChoice[];
   allowFreeText: boolean;
   allowNotSure: boolean;
+  allowMultiple: boolean;
   boundaryNote?: string;
 }
 
@@ -186,10 +216,21 @@ export interface PlanningSession {
   status: PlanningSessionStatus;
   responses: PlanningResponse[];
   candidateParts: CandidateSystemPart[];
+  goalClarificationTurns?: GoalClarificationTurn[];
   goalUnderstanding?: GoalUnderstanding;
   draftTrail?: DraftSystemTrail;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface GoalClarificationTurn {
+  id: string;
+  questionId: string;
+  prompt: string;
+  answer: string;
+  source: PlanningResponseSource;
+  targets: GoalContractField[];
+  createdAt: string;
 }
 
 export interface ChecklistItem {

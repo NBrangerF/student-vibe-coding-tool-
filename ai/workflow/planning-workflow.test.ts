@@ -69,7 +69,7 @@ describe("P0 agent planning workflow", () => {
   it("maps a started planning session to goal understanding before questions", () => {
     expect(planningStatusFromSession(baseSession)).toBe("GOAL_UNDERSTANDING_GENERATED");
     expect(getSkillForPlanningStatus("GOAL_UNDERSTANDING_GENERATED")).toBe("goal-understanding");
-    expect(getAllowedPlanningActions("GOAL_UNDERSTANDING_GENERATED")).toEqual(["confirm-understanding", "revise-understanding"]);
+    expect(getAllowedPlanningActions("GOAL_UNDERSTANDING_GENERATED")).toEqual(["confirm-understanding", "revise-understanding", "answer-goal-question"]);
   });
 
   it("does not allow candidate generation before first response is clarified", () => {

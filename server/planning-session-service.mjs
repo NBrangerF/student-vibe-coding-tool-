@@ -52,9 +52,10 @@ function createSession(project, idea, goalUnderstanding = inferGoalUnderstanding
     id: `planning-${Date.now()}`,
     projectId: project.id,
     idea,
-    status: "goal_understanding_generated",
+    status: goalUnderstanding.goalReadiness?.readyForConfirmation ? "goal_understanding_generated" : "goal_understanding_needs_clarification",
     responses: [],
     candidateParts: [],
+    goalClarificationTurns: [],
     goalUnderstanding,
     createdAt: timestamp,
     updatedAt: timestamp
@@ -322,7 +323,7 @@ const planningChoiceSchema = {
 const planningQuestionSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["id", "title", "prompt", "quietAiNote", "choices", "allowFreeText", "allowNotSure"],
+  required: ["id", "title", "prompt", "quietAiNote", "choices", "allowFreeText", "allowNotSure", "allowMultiple"],
   properties: {
     id: { type: "string", enum: ["finished-artifact", "first-user-action", "first-system-response"] },
     title: { type: "string", maxLength: 60 },
@@ -330,7 +331,69 @@ const planningQuestionSchema = {
     quietAiNote: { type: "string", maxLength: 160 },
     choices: { type: "array", minItems: 3, maxItems: 4, items: planningChoiceSchema },
     allowFreeText: { type: "boolean" },
-    allowNotSure: { type: "boolean" }
+    allowNotSure: { type: "boolean" },
+    allowMultiple: { type: "boolean" }
+  }
+};
+
+const goalContractFieldValues = ["learnerGoal", "primaryObject", "actor", "coreMechanic", "endState"];
+
+const goalClarificationChoiceSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["id", "label", "visibleBehavior"],
+  properties: {
+    id: { type: "string", maxLength: 48 },
+    label: { type: "string", maxLength: 38 },
+    detail: { type: "string", maxLength: 140 },
+    visibleBehavior: { type: "string", maxLength: 140 },
+    fillsSlot: { type: "string", maxLength: 32 },
+    systemRole: { type: "string", maxLength: 42 }
+  }
+};
+
+const goalClarificationQuestionSchema = {
+  anyOf: [
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["id", "prompt", "choices", "allowFreeText", "allowNotSure", "targets"],
+      properties: {
+        id: { type: "string", maxLength: 48 },
+        prompt: { type: "string", maxLength: 140 },
+        choices: { type: "array", minItems: 2, maxItems: 4, items: goalClarificationChoiceSchema },
+        allowFreeText: { type: "boolean" },
+        allowNotSure: { type: "boolean" },
+        targets: { type: "array", minItems: 1, maxItems: 2, items: { type: "string", enum: goalContractFieldValues } }
+      }
+    },
+    { type: "null" }
+  ]
+};
+
+const goalContractSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["learnerGoal", "primaryObject", "actor", "coreMechanic", "endState"],
+  properties: {
+    learnerGoal: { type: "string", maxLength: 260 },
+    primaryObject: { anyOf: [{ type: "string", maxLength: 100 }, { type: "null" }] },
+    actor: { anyOf: [{ type: "string", maxLength: 80 }, { type: "null" }] },
+    coreMechanic: { anyOf: [{ type: "string", maxLength: 160 }, { type: "null" }] },
+    endState: { anyOf: [{ type: "string", maxLength: 160 }, { type: "null" }] }
+  }
+};
+
+const goalReadinessSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["readyForConfirmation", "missingFields", "confidence", "rationale", "nextQuestion"],
+  properties: {
+    readyForConfirmation: { type: "boolean" },
+    missingFields: { type: "array", maxItems: 5, items: { type: "string", enum: goalContractFieldValues } },
+    confidence: { type: "string", enum: ["high", "medium", "low"] },
+    rationale: { type: "string", maxLength: 180 },
+    nextQuestion: goalClarificationQuestionSchema
   }
 };
 
@@ -358,7 +421,9 @@ const startPlanningSchema = {
         "ambiguityFlags",
         "safetyOrBoundaryNotes",
         "recommendedCoPlanningStrategy",
-        "quietAI"
+        "quietAI",
+        "goalContract",
+        "goalReadiness"
       ],
       properties: {
         projectTitle: { type: "string", maxLength: 80 },
@@ -400,7 +465,9 @@ const startPlanningSchema = {
             questionSequence: { type: "array", minItems: 3, maxItems: 5, items: { type: "string", maxLength: 120 } }
           }
         },
-        quietAI: { type: "string", maxLength: 180 }
+        quietAI: { type: "string", maxLength: 180 },
+        goalContract: goalContractSchema,
+        goalReadiness: goalReadinessSchema
       }
     },
     assistantMessage: { type: "string", maxLength: 180 }
@@ -523,15 +590,175 @@ function normalizeQuestion(question, fallbackId) {
       .filter((choice) => choice.label)
       .slice(0, 4),
     allowFreeText: true,
-    allowNotSure: true
+    allowNotSure: true,
+    allowMultiple: true
+  };
+}
+
+function normalizeGoalClarificationQuestion(question, fallbackUnderstanding) {
+  if (!question) return null;
+  const id = compactText(question.id || "goal-core-mechanic", 48);
+  const targets = (Array.isArray(question.targets) ? question.targets : ["coreMechanic"])
+    .filter((field) => goalContractFieldValues.includes(field))
+    .slice(0, 2);
+  const choices = (Array.isArray(question.choices) ? question.choices : [])
+    .slice(0, 4)
+    .map((choice, index) => ({
+      id: compactText(choice.id || `${id}-${index + 1}`, 48),
+      label: compactText(choice.label, 38),
+      visibleBehavior: compactText(choice.visibleBehavior || choice.detail || choice.label, 140),
+      detail: compactText(choice.detail || choice.visibleBehavior || "", 140),
+      fillsSlot: goalContractFieldValues.includes(choice.fillsSlot) ? choice.fillsSlot : undefined,
+      systemRole: compactText(choice.systemRole || "", 42)
+    }))
+    .filter((choice) => choice.label)
+    .slice(0, 4);
+  return {
+    id,
+    prompt: compactText(question.prompt || "What is the main action that makes your project work?", 140),
+    choices: choices.length >= 2 ? choices : goalContractQuestion("coreMechanic", fallbackUnderstanding).choices,
+    allowFreeText: true,
+    allowNotSure: true,
+    targets: targets.length ? targets : ["coreMechanic"]
+  };
+}
+
+function goalChoice(id, label, visibleBehavior) {
+  return { id, label, visibleBehavior, detail: visibleBehavior };
+}
+
+function goalContractQuestion(field, understanding) {
+  if (field === "primaryObject") {
+    return {
+      id: "goal-primary-object",
+      prompt: "What is the main thing your project works with?",
+      choices: [
+        goalChoice("object-character", "A character or game object", "The project is about a visible character, player, or object."),
+        goalChoice("object-picture", "A picture, drawing, or design", "The project changes or shows an image."),
+        goalChoice("object-list", "Tasks, items, or a list", "The project helps people track things.")
+      ],
+      allowFreeText: true,
+      allowNotSure: true,
+      targets: ["primaryObject"]
+    };
+  }
+  if (field === "coreMechanic") {
+    const gameChoices = understanding.planningLens === "game-interaction"
+      ? [
+        goalChoice("mechanic-jump", "The player jumps or avoids something", "The player repeats an action to avoid a challenge."),
+        goalChoice("mechanic-choose", "The player makes choices", "Choices change what happens in the game."),
+        goalChoice("mechanic-score", "The player earns points", "The main loop changes the score.")
+      ]
+      : [
+        goalChoice("mechanic-change", "The user changes one thing", "A visible part changes after the user's action."),
+        goalChoice("mechanic-choose-result", "The user chooses and sees a result", "A choice leads to a visible result."),
+        goalChoice("mechanic-react", "The system reacts", "The project responds after the user acts.")
+      ];
+    return {
+      id: "goal-core-mechanic",
+      prompt: understanding.planningLens === "game-interaction" ? "What should the player do again and again?" : "What is the main action that makes your project work?",
+      choices: gameChoices,
+      allowFreeText: true,
+      allowNotSure: true,
+      targets: ["coreMechanic"]
+    };
+  }
+  return {
+    id: "goal-end-state",
+    prompt: "How will someone know the project reached its goal?",
+    choices: [
+      goalChoice("end-clear-result", "A clear result appears", "The user sees the result they were trying to make."),
+      goalChoice("end-score-or-win", "A score, win, or finish state appears", "The project shows progress or completion."),
+      goalChoice("end-save-share", "The user can save or share it", "The final result can be kept or shown to someone.")
+    ],
+    allowFreeText: true,
+    allowNotSure: true,
+    targets: ["endState"]
+  };
+}
+
+function hasSpecificSignal(text, patterns) {
+  return patterns.some((pattern) => pattern.test(text));
+}
+
+function inferGoalContract(idea, understanding, turns = []) {
+  const combined = [idea, ...turns.map((turn) => turn.answer)].join(" ").replace(/\s+/g, " ").trim();
+  const lower = combined.toLowerCase();
+  const vague = /^(i want to make\s+)?(a\s+)?(game|app|website|something|something fun|thing)\.?$/i.test(combined.trim());
+  const primaryTurn = turns.find((turn) => Array.isArray(turn.targets) && turn.targets.includes("primaryObject"));
+  const actorTurn = turns.find((turn) => Array.isArray(turn.targets) && turn.targets.includes("actor"));
+  const mechanicTurn = turns.find((turn) => Array.isArray(turn.targets) && turn.targets.includes("coreMechanic"));
+  const endTurn = turns.find((turn) => Array.isArray(turn.targets) && turn.targets.includes("endState"));
+
+  let coreMechanic = null;
+  if (understanding.planningLens === "creative-transform-tool") coreMechanic = "apply a visual style to a drawing";
+  if (hasSpecificSignal(lower, [/feed|feeding|happiness|happy|care|react/, /jump|avoid|score|collect|choose|unlock|move/, /style|filter|transform|change|upload|draw/, /hint|explain|check|revise/])) {
+    coreMechanic = understanding.desiredChange ?? "user action changes the project";
+  }
+  if (mechanicTurn) coreMechanic = mechanicTurn.answer;
+
+  let endState = null;
+  if (understanding.planningLens === "creative-transform-tool") endState = "styled drawing preview";
+  if (hasSpecificSignal(lower, [/goal is|win|finish|complete|end|keep|save|share|preview|result|for \d+|score|points|happy for/])) {
+    endState = understanding.likelyOutput ?? "a visible result";
+  }
+  if (endTurn) endState = endTurn.answer;
+
+  return {
+    learnerGoal: compactText(combined, 260),
+    primaryObject: primaryTurn?.answer ?? (vague && understanding.planningLens === "generic-custom-system" ? null : understanding.primaryObject),
+    actor: actorTurn?.answer ?? (vague && understanding.planningLens === "generic-custom-system" ? null : understanding.userActor),
+    coreMechanic,
+    endState
+  };
+}
+
+function inferGoalReadiness(contract, understanding) {
+  const missingFields = [];
+  if (!contract.learnerGoal) missingFields.push("learnerGoal");
+  if (!contract.primaryObject) missingFields.push("primaryObject");
+  if (!contract.actor) missingFields.push("actor");
+  if (!contract.coreMechanic) missingFields.push("coreMechanic");
+  if (!contract.endState) missingFields.push("endState");
+  const readyForConfirmation = missingFields.length === 0;
+  const confidence = readyForConfirmation ? "high" : missingFields.length <= 2 ? "medium" : "low";
+  const nextTarget = missingFields.includes("primaryObject")
+    ? "primaryObject"
+    : missingFields.includes("coreMechanic")
+      ? "coreMechanic"
+      : missingFields.includes("endState")
+        ? "endState"
+        : missingFields[0];
+  return {
+    readyForConfirmation,
+    missingFields,
+    confidence,
+    rationale: readyForConfirmation
+      ? "The goal has a main object, actor, core mechanic, and end state."
+      : "The goal needs one more concrete part before planning the system trail.",
+    nextQuestion: nextTarget ? goalContractQuestion(nextTarget, understanding) : null
+  };
+}
+
+function buildGoalClarification(idea, turns = []) {
+  const combinedIdea = [idea, ...turns.map((turn) => turn.answer)].join(" ").trim();
+  const understanding = inferGoalUnderstanding(combinedIdea || idea);
+  const goalContract = inferGoalContract(idea, understanding, turns);
+  const goalReadiness = inferGoalReadiness(goalContract, understanding);
+  return {
+    ...understanding,
+    confidence: goalReadiness.confidence,
+    goalContract,
+    goalReadiness,
+    quietAI: goalReadiness.nextQuestion?.prompt ?? "This goal is clear enough to confirm before planning."
   };
 }
 
 function normalizeGoalUnderstanding(value, idea) {
-  const fallback = inferGoalUnderstanding(idea);
+  const fallback = buildGoalClarification(idea);
   const lens = planningLensValues.includes(value?.planningLens) ? value.planningLens : fallback.planningLens;
   const confidence = ["high", "medium", "low"].includes(value?.confidence) ? value.confidence : fallback.confidence;
-  return {
+  const normalized = {
     projectTitle: compactText(value?.projectTitle || fallback.projectTitle, 80),
     originalIdea: compactText(value?.originalIdea || idea, 220),
     learnerFacingRestatement: compactText(value?.learnerFacingRestatement || fallback.learnerFacingRestatement, 220),
@@ -564,6 +791,28 @@ function normalizeGoalUnderstanding(value, idea) {
         : fallback.recommendedCoPlanningStrategy.questionSequence).slice(0, 5).map((item) => compactText(item, 120))
     },
     quietAI: compactText(value?.quietAI || fallback.quietAI, 180)
+  };
+  const goalContract = {
+    learnerGoal: compactText(value?.goalContract?.learnerGoal || fallback.goalContract.learnerGoal, 260),
+    primaryObject: value?.goalContract?.primaryObject ?? fallback.goalContract.primaryObject,
+    actor: value?.goalContract?.actor ?? fallback.goalContract.actor,
+    coreMechanic: value?.goalContract?.coreMechanic ?? fallback.goalContract.coreMechanic,
+    endState: value?.goalContract?.endState ?? fallback.goalContract.endState
+  };
+  const fallbackReadiness = inferGoalReadiness(goalContract, normalized);
+  const nextQuestion = normalizeGoalClarificationQuestion(value?.goalReadiness?.nextQuestion ?? fallbackReadiness.nextQuestion, normalized);
+  return {
+    ...normalized,
+    goalContract,
+    goalReadiness: {
+      readyForConfirmation: typeof value?.goalReadiness?.readyForConfirmation === "boolean" ? value.goalReadiness.readyForConfirmation : fallbackReadiness.readyForConfirmation,
+      missingFields: (Array.isArray(value?.goalReadiness?.missingFields) ? value.goalReadiness.missingFields : fallbackReadiness.missingFields)
+        .filter((field) => goalContractFieldValues.includes(field))
+        .slice(0, 5),
+      confidence: ["high", "medium", "low"].includes(value?.goalReadiness?.confidence) ? value.goalReadiness.confidence : fallbackReadiness.confidence,
+      rationale: compactText(value?.goalReadiness?.rationale || fallbackReadiness.rationale, 180),
+      nextQuestion
+    }
   };
 }
 
@@ -912,6 +1161,29 @@ async function tryOpenAI({ name, schema, user, fallback }) {
   }
 }
 
+async function requireOpenAI({ name, schema, user }) {
+  if (!process.env.OPENAI_API_KEY) {
+    const error = new Error("OPENAI_API_KEY is required for co-planning.");
+    error.status = 503;
+    throw error;
+  }
+  try {
+    return {
+      ...(await callStructuredOpenAI({
+        name,
+        schema,
+        system: agentSystemPrompt,
+        user: JSON.stringify(user)
+      })),
+      __engineSource: "openai"
+    };
+  } catch (error) {
+    const requiredError = new Error(`LLM co-planning failed: ${error.message}`);
+    requiredError.status = error.status && error.status >= 400 ? error.status : 502;
+    throw requiredError;
+  }
+}
+
 export async function startPlanning(body) {
   const idea = compactText(body.idea ?? body.learnerIdea, 220);
   if (!idea) {
@@ -921,21 +1193,23 @@ export async function startPlanning(body) {
   }
 
   const llm = await tryOpenAI({
-    name: "planning_start_response",
+    name: "goal_clarification_response",
     schema: startPlanningSchema,
     user: {
       skill: "goal-understanding",
       learnerIdea: idea,
+      goalClarificationTurns: [],
       rules: [
         "Do not generate a final System Trail.",
         "Do not ask a co-planning question yet.",
-        "Infer an internal planning lens and universal system grammar.",
-        "Open-ended does not mean generic."
+        "First confirm the learner goal contract.",
+        "A ready goal must include primaryObject, actor, coreMechanic, and endState.",
+        "If not ready, ask exactly one direct or indirect goal clarification question."
       ]
     },
     fallback: () => ({
-      goalUnderstanding: inferGoalUnderstanding(idea),
-      assistantMessage: "Check my understanding first. Then we will plan the system together."
+      goalUnderstanding: buildGoalClarification(idea),
+      assistantMessage: "First let’s make the goal clear enough to plan."
     })
   });
 
@@ -965,10 +1239,62 @@ export async function confirmGoalUnderstanding(body) {
     throw error;
   }
 
-  const idea = extraDetail && action !== "confirm" ? `${session.idea} ${extraDetail}` : session.idea;
-  const goalUnderstanding = action === "confirm"
-    ? normalizeGoalUnderstanding(session.goalUnderstanding, session.idea)
-    : normalizeGoalUnderstanding(inferGoalUnderstanding(idea), idea);
+  const turns = Array.isArray(session.goalClarificationTurns) ? [...session.goalClarificationTurns] : [];
+  if (action === "answer-goal-question") {
+    const question = body.question ?? session.goalUnderstanding?.goalReadiness?.nextQuestion;
+    const answer = compactText(body.answer ?? extraDetail, 220);
+    if (!question || !answer) {
+      const error = new Error("goal question and answer are required");
+      error.status = 400;
+      throw error;
+    }
+    turns.push({
+      id: `goal-turn-${Date.now()}`,
+      questionId: compactText(question.id, 48),
+      prompt: compactText(question.prompt, 140),
+      answer,
+      source: body.source === "free-input" || body.source === "not-sure" ? body.source : "choice",
+      targets: (Array.isArray(question.targets) ? question.targets : ["coreMechanic"]).filter((field) => goalContractFieldValues.includes(field)).slice(0, 2),
+      createdAt: now()
+    });
+  }
+
+  const idea = extraDetail && action === "revise" ? `${session.idea} ${extraDetail}` : session.idea;
+  const llm = action === "confirm"
+    ? {
+      goalUnderstanding: normalizeGoalUnderstanding(session.goalUnderstanding, session.idea),
+      assistantMessage: "Great. Now we will ask one planning question at a time.",
+      __engineSource: "local-gate"
+    }
+    : await tryOpenAI({
+      name: "goal_clarification_response",
+      schema: startPlanningSchema,
+      user: {
+        skill: "goal-understanding",
+        learnerIdea: idea,
+        previousGoalUnderstanding: session.goalUnderstanding,
+        goalClarificationTurns: turns,
+        latestAction: action,
+        rules: [
+          "Do not generate a final System Trail.",
+          "Do not generate candidate system parts.",
+          "Do not write code.",
+          "A ready goal must include primaryObject, actor, coreMechanic, and endState.",
+          "If not ready, ask exactly one next goal clarification question."
+        ]
+      },
+      fallback: () => ({
+        goalUnderstanding: buildGoalClarification(idea, turns),
+        assistantMessage: "Let’s make the goal a little clearer before planning."
+      })
+    });
+
+  const goalUnderstanding = normalizeGoalUnderstanding(llm.goalUnderstanding, idea);
+  if (action === "confirm" && !goalUnderstanding.goalReadiness?.readyForConfirmation) {
+    const error = new Error("Answer the goal question before confirming this goal.");
+    error.status = 409;
+    throw error;
+  }
   const updatedProject = {
     ...project,
     title: goalUnderstanding.projectTitle,
@@ -978,28 +1304,55 @@ export async function confirmGoalUnderstanding(body) {
   const planningSession = {
     ...session,
     idea,
-    status: action === "confirm" ? "goal_understanding_confirmed" : "goal_understanding_generated",
+    status: action === "confirm"
+      ? "goal_understanding_confirmed"
+      : goalUnderstanding.goalReadiness?.readyForConfirmation
+        ? "goal_understanding_generated"
+        : "goal_understanding_needs_clarification",
+    goalClarificationTurns: turns,
     goalUnderstanding,
     updatedAt: now()
   };
 
-  const currentQuestion = action === "confirm" ? normalizeQuestion(fallbackQuestion(idea, "finished-artifact", goalUnderstanding), "finished-artifact") : null;
+  const firstQuestion = action === "confirm"
+    ? await requireOpenAI({
+      name: "planning_question_response",
+      schema: answerQuestionSchema,
+      user: {
+        skill: "adaptive-co-planning-question",
+        learnerIdea: idea,
+        goalUnderstanding,
+        responses: [],
+        nextQuestionId: "finished-artifact",
+        planningDirection: "reverse-from-end-goal",
+        rules: [
+          "Ask exactly one co-planning question.",
+          "This first co-planning question must start from the end goal or final user-visible success state.",
+          "Work backward from the learner's Goal Contract toward a simple first milestone.",
+          "Choices must be selectable in combination; set allowMultiple to true.",
+          "Every choice must describe visible end-state behavior or success evidence.",
+          "Do not generate candidate parts, a System Trail, or code."
+        ]
+      }
+    })
+    : null;
+  const currentQuestion = firstQuestion ? normalizeQuestion(firstQuestion.currentQuestion, "finished-artifact") : null;
   return {
     project: updatedProject,
     planningSession,
     goalUnderstanding,
     currentQuestion,
     assistantMessage: action === "confirm"
-      ? "Great. Now we will ask one planning question at a time."
-      : "I updated my understanding. Check if this feels right.",
-    engineSource: "fallback"
+      ? compactText(firstQuestion?.assistantMessage || "Start from the end goal, then we will work backward.", 180)
+      : compactText(llm.assistantMessage || goalUnderstanding.goalReadiness?.nextQuestion?.prompt || "This goal is ready for you to confirm.", 180),
+    engineSource: firstQuestion?.__engineSource ?? llm.__engineSource
   };
 }
 
 export async function answerPlanning(body) {
   const session = body.session;
   const questionId = compactText(body.questionId, 48);
-  const answer = compactText(body.answer, 180);
+  const answer = compactText(body.answer, 320);
   const source = body.source === "free-input" || body.source === "not-sure" ? body.source : "choice";
   if (!session || !questionId || !answer) {
     const error = new Error("session, questionId, and answer are required");
@@ -1008,6 +1361,18 @@ export async function answerPlanning(body) {
   }
   if (session.status === "started" || session.status === "goal_understanding_generated" || session.status === "goal_understanding_needs_clarification") {
     const error = new Error("Confirm the goal understanding before answering co-planning questions.");
+    error.status = 409;
+    throw error;
+  }
+  const expectedQuestionId = session.status === "goal_understanding_confirmed"
+    ? "finished-artifact"
+    : session.status === "outcome_clarified"
+      ? "first-user-action"
+      : session.status === "first_action_clarified"
+        ? "first-system-response"
+        : null;
+  if (expectedQuestionId && questionId !== expectedQuestionId) {
+    const error = new Error(`Expected answer for ${expectedQuestionId} before ${questionId}.`);
     error.status = 409;
     throw error;
   }
@@ -1029,7 +1394,7 @@ export async function answerPlanning(body) {
   };
 
   if (questionId === "first-system-response") {
-    const llm = await tryOpenAI({
+    const llm = await requireOpenAI({
       name: "candidate_system_parts_response",
       schema: candidatePartsSchema,
       user: {
@@ -1037,18 +1402,16 @@ export async function answerPlanning(body) {
         learnerIdea: session.idea,
         goalUnderstanding: session.goalUnderstanding,
         responses,
+        planningDirection: "reverse-from-end-goal",
         rules: [
           "Generate candidates only, not a confirmed trail.",
+          "Use the reverse-planning answers: end goal, prior visible step, then first milestone.",
           "Use visible system capabilities.",
+          "Include one simple candidate part that can become the first milestone.",
+          "Do not use fallback or generic app parts.",
           "For homework helper ideas, keep a learning-support boundary."
         ]
-      },
-      fallback: () => ({
-        candidateParts: fallbackCandidateParts(updatedBase),
-        assistantMessage: /homework|helper|agent|study/i.test(session.idea)
-          ? "These parts help learning without doing the homework for the learner."
-          : "These are possible parts of your system. You can keep, change, remove, or add parts."
-      })
+      }
     });
     const candidateParts = llm.candidateParts.map(normalizeCandidatePart);
     return {
@@ -1064,7 +1427,7 @@ export async function answerPlanning(body) {
   }
 
   const nextQuestionId = questionId === "finished-artifact" ? "first-user-action" : "first-system-response";
-  const llm = await tryOpenAI({
+  const llm = await requireOpenAI({
     name: "planning_question_response",
     schema: answerQuestionSchema,
     user: {
@@ -1073,16 +1436,18 @@ export async function answerPlanning(body) {
       goalUnderstanding: session.goalUnderstanding,
       responses,
       nextQuestionId,
+      planningDirection: "reverse-from-end-goal",
       rules: [
         "Ask exactly one planning question.",
-        "Choices must be visible user actions or visible system responses.",
+        nextQuestionId === "first-user-action"
+          ? "Work one step backward from the end goal: ask what visible condition or system response must happen immediately before the final success."
+          : "Work backward to the easiest first milestone: ask what the learner can build first that makes entry into the system visible.",
+        "Choices must be selectable in combination; set allowMultiple to true.",
+        "Choices must be visible user actions, visible system responses, or first-milestone entry behaviors.",
+        "The final co-planning question must help choose a simple first milestone.",
         "Do not generate candidate parts yet."
       ]
-    },
-    fallback: () => ({
-      currentQuestion: fallbackQuestion(session.idea, nextQuestionId, session.goalUnderstanding),
-      assistantMessage: "One quick question at a time."
-    })
+    }
   });
 
   return {
@@ -1107,23 +1472,24 @@ export async function createDraft(body) {
     throw error;
   }
 
-  const llm = await tryOpenAI({
+  const llm = await requireOpenAI({
     name: "draft_system_trail_response",
     schema: draftTrailSchema,
     user: {
       skill: "assemble-draft-system-trail",
       learnerIdea: session.idea,
+      goalUnderstanding: session.goalUnderstanding,
+      responses: session.responses,
       selectedParts: parts,
+      planningDirection: "reverse-from-end-goal",
       rules: [
         "Use only selected parts unless a small connector is required.",
         "This is still a draft.",
-        "Preserve student-created or student-edited meaning."
+        "Preserve student-created or student-edited meaning.",
+        "Order the draft so the simplest visible first milestone is node 1.",
+        "The remaining nodes should progress toward the confirmed end goal."
       ]
-    },
-    fallback: () => ({
-      draftTrail: createDraftTrailFromParts(parts),
-      assistantMessage: "This is a first version. You can change it before building."
-    })
+    }
   });
 
   const draftTrail = {
@@ -1208,10 +1574,11 @@ export async function confirmPlanning(body) {
 
 export async function startPlanningSession(body) {
   const started = await startPlanning(body);
+  const ready = Boolean(started.goalUnderstanding.goalReadiness?.readyForConfirmation);
   return response({
     sessionId: started.planningSession.id,
-    status: "GOAL_UNDERSTANDING_GENERATED",
-    allowedActions: ["confirm-understanding"],
+    status: ready ? "GOAL_UNDERSTANDING_GENERATED" : "GOAL_UNDERSTANDING_NEEDS_CLARIFICATION",
+    allowedActions: ready ? ["confirm-understanding", "revise-understanding"] : ["answer-goal-question", "revise-understanding"],
     surface: "goal-understanding",
     quietAI: started.assistantMessage,
     data: {

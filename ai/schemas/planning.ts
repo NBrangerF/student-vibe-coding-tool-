@@ -41,6 +41,7 @@ export type AgentSkillName =
 export type AgentAllowedAction =
   | "confirm-understanding"
   | "revise-understanding"
+  | "answer-goal-question"
   | "answer-question"
   | "select-parts"
   | "edit-parts"
