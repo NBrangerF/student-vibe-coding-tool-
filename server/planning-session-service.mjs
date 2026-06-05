@@ -715,6 +715,16 @@ function mechanicClause(value) {
   return text;
 }
 
+function primaryObjectFromMechanic(value) {
+  const text = compactText(value, 160).toLowerCase();
+  if (!text) return null;
+  if (/obstacle|spike|enemy|barrier|block/u.test(text)) return "obstacles the player jumps over";
+  if (/platform|ledge|ground|floor/u.test(text)) return "platforms the player lands on";
+  if (/coin|item|star|gem|collect/u.test(text)) return "items the player collects while jumping";
+  if (/gap|hole|pit/u.test(text)) return "gaps the player avoids falling into";
+  return null;
+}
+
 function inferGoalContract(idea, understanding, turns = []) {
   const combined = [idea, ...turns.map((turn) => turn.answer)].join(" ").replace(/\s+/g, " ").trim();
   const lower = combined.toLowerCase();
@@ -730,6 +740,7 @@ function inferGoalContract(idea, understanding, turns = []) {
     coreMechanic = understanding.desiredChange ?? "user action changes the project";
   }
   if (mechanicTurn) coreMechanic = mechanicTurn.answer;
+  const inferredPrimaryObject = primaryObjectFromMechanic(coreMechanic) ?? primaryObjectFromMechanic(primaryTurn?.answer);
 
   let endState = null;
   if (understanding.planningLens === "creative-transform-tool") endState = "styled drawing preview";
@@ -747,7 +758,7 @@ function inferGoalContract(idea, understanding, turns = []) {
 
   return {
     learnerGoal,
-    primaryObject: primaryTurn?.answer ?? (vague && understanding.planningLens === "generic-custom-system" ? null : understanding.primaryObject),
+    primaryObject: inferredPrimaryObject ?? primaryTurn?.answer ?? (vague && understanding.planningLens === "generic-custom-system" ? null : understanding.primaryObject),
     actor: actorTurn?.answer ?? (vague && understanding.planningLens === "generic-custom-system" ? null : understanding.userActor),
     coreMechanic,
     endState
@@ -824,8 +835,18 @@ function isThinGoalValue(field, value, understanding) {
   return false;
 }
 
-function normalizeGoalUnderstanding(value, idea) {
-  const fallback = buildGoalClarification(idea);
+function sanitizeGoalContract(contract, readiness, understanding) {
+  const sanitized = { ...contract };
+  for (const field of readiness.missingFields ?? []) {
+    if (field === "primaryObject" && isThinGoalValue(field, sanitized.primaryObject, understanding)) sanitized.primaryObject = null;
+    if (field === "coreMechanic" && isThinGoalValue(field, sanitized.coreMechanic, understanding)) sanitized.coreMechanic = null;
+    if (field === "endState" && isThinGoalValue(field, sanitized.endState, understanding)) sanitized.endState = null;
+  }
+  return sanitized;
+}
+
+function normalizeGoalUnderstanding(value, idea, turns = []) {
+  const fallback = buildGoalClarification(idea, turns);
   const lens = planningLensValues.includes(value?.planningLens) ? value.planningLens : fallback.planningLens;
   const confidence = ["high", "medium", "low"].includes(value?.confidence) ? value.confidence : fallback.confidence;
   const normalized = {
@@ -862,18 +883,28 @@ function normalizeGoalUnderstanding(value, idea) {
     },
     quietAI: compactText(value?.quietAI || fallback.quietAI, 180)
   };
-  const goalContract = {
+  const rawGoalContract = {
     learnerGoal: compactText(value?.goalContract?.learnerGoal || fallback.goalContract.learnerGoal, 260),
-    primaryObject: value?.goalContract?.primaryObject ?? fallback.goalContract.primaryObject,
+    primaryObject: primaryObjectFromMechanic(value?.goalContract?.coreMechanic) ?? primaryObjectFromMechanic(fallback.goalContract.coreMechanic) ?? value?.goalContract?.primaryObject ?? fallback.goalContract.primaryObject,
     actor: value?.goalContract?.actor ?? fallback.goalContract.actor,
     coreMechanic: value?.goalContract?.coreMechanic ?? fallback.goalContract.coreMechanic,
     endState: value?.goalContract?.endState ?? fallback.goalContract.endState
   };
-  const fallbackReadiness = inferGoalReadiness(goalContract, normalized);
+  const fallbackReadiness = inferGoalReadiness(rawGoalContract, normalized);
   const llmMissingFields = (Array.isArray(value?.goalReadiness?.missingFields) ? value.goalReadiness.missingFields : [])
     .filter((field) => goalContractFieldValues.includes(field));
-  const missingFields = Array.from(new Set([...fallbackReadiness.missingFields, ...llmMissingFields])).slice(0, 5);
-  const readyForConfirmation = fallbackReadiness.readyForConfirmation && value?.goalReadiness?.readyForConfirmation === true;
+  const missingFields = Array.from(new Set([...fallbackReadiness.missingFields, ...llmMissingFields]))
+    .filter((field) => {
+      if (field === "learnerGoal") return !rawGoalContract.learnerGoal;
+      if (field === "primaryObject") return isThinGoalValue(field, rawGoalContract.primaryObject, normalized);
+      if (field === "coreMechanic") return isThinGoalValue(field, rawGoalContract.coreMechanic, normalized);
+      if (field === "endState") return isThinGoalValue(field, rawGoalContract.endState, normalized);
+      return false;
+    })
+    .slice(0, 5);
+  const readyForConfirmation = missingFields.length === 0;
+  const readinessCore = { ...fallbackReadiness, missingFields, readyForConfirmation };
+  const goalContract = sanitizeGoalContract(rawGoalContract, readinessCore, normalized);
   const nextQuestion = normalizeGoalClarificationQuestion(
     readyForConfirmation ? null : fallbackReadiness.nextQuestion ?? value?.goalReadiness?.nextQuestion,
     normalized
@@ -1340,7 +1371,7 @@ export async function confirmGoalUnderstanding(body) {
   const idea = extraDetail && action === "revise" ? `${session.idea} ${extraDetail}` : session.idea;
   const llm = action === "confirm"
     ? {
-      goalUnderstanding: normalizeGoalUnderstanding(session.goalUnderstanding, session.idea),
+      goalUnderstanding: normalizeGoalUnderstanding(session.goalUnderstanding, session.idea, turns),
       assistantMessage: "Great. Now we will ask one planning question at a time.",
       __engineSource: "local-gate"
     }
@@ -1370,7 +1401,7 @@ export async function confirmGoalUnderstanding(body) {
       })
     });
 
-  const goalUnderstanding = normalizeGoalUnderstanding(llm.goalUnderstanding, idea);
+  const goalUnderstanding = normalizeGoalUnderstanding(llm.goalUnderstanding, idea, turns);
   if (action === "confirm" && !goalUnderstanding.goalReadiness?.readyForConfirmation) {
     const error = new Error("Answer the goal question before confirming this goal.");
     error.status = 409;
