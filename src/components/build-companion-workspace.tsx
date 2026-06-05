@@ -264,6 +264,7 @@ export function BuildCompanionWorkspace() {
   const [planningSession, setPlanningSession] = useState<PlanningSession | null>(null);
   const [goalUnderstanding, setGoalUnderstanding] = useState<GoalUnderstanding | null>(null);
   const [understandingDetails, setUnderstandingDetails] = useState("");
+  const [goalQuestionDraft, setGoalQuestionDraft] = useState("");
   const [planningQuestion, setPlanningQuestion] = useState<PlanningQuestion | null>(null);
   const [planningFreeInput, setPlanningFreeInput] = useState("");
   const [planningSelectedChoiceIds, setPlanningSelectedChoiceIds] = useState<string[]>([]);
@@ -337,6 +338,7 @@ export function BuildCompanionWorkspace() {
         planningSession?: PlanningSession;
         goalUnderstanding?: GoalUnderstanding;
         understandingDetails?: string;
+        goalQuestionDraft?: string;
         planningQuestion?: PlanningQuestion;
         draftTrail?: DraftSystemTrail;
         firstDraftNodeId?: string;
@@ -358,6 +360,7 @@ export function BuildCompanionWorkspace() {
         if (parsed.planningSession) setPlanningSession(parsed.planningSession);
         if (parsed.goalUnderstanding) setGoalUnderstanding(parsed.goalUnderstanding);
         if (typeof parsed.understandingDetails === "string") setUnderstandingDetails(parsed.understandingDetails);
+        if (typeof parsed.goalQuestionDraft === "string") setGoalQuestionDraft(parsed.goalQuestionDraft);
         if (parsed.planningQuestion) setPlanningQuestion(parsed.planningQuestion);
         if (parsed.draftTrail) setDraftTrail(parsed.draftTrail);
         if (parsed.firstDraftNodeId) setFirstDraftNodeId(parsed.firstDraftNodeId);
@@ -392,6 +395,7 @@ export function BuildCompanionWorkspace() {
         planningSession,
         goalUnderstanding,
         understandingDetails,
+        goalQuestionDraft,
         planningQuestion,
         draftTrail,
         firstDraftNodeId,
@@ -414,6 +418,7 @@ export function BuildCompanionWorkspace() {
     planningSession,
     goalUnderstanding,
     understandingDetails,
+    goalQuestionDraft,
     planningQuestion,
     draftTrail,
     firstDraftNodeId,
@@ -457,6 +462,7 @@ export function BuildCompanionWorkspace() {
     setPlanningSession(null);
     setGoalUnderstanding(null);
     setUnderstandingDetails("");
+    setGoalQuestionDraft("");
     setPlanningQuestion(null);
     setPlanningFreeInput("");
     setPlanningSelectedChoiceIds([]);
@@ -491,6 +497,7 @@ export function BuildCompanionWorkspace() {
       setPlanningSession(response.planningSession);
       setGoalUnderstanding(response.goalUnderstanding);
       setPlanningQuestion(response.currentQuestion ?? null);
+      setGoalQuestionDraft("");
       setDraftTrail(null);
       setFirstDraftNodeId("");
       setSelectedNodeId("");
@@ -523,6 +530,7 @@ export function BuildCompanionWorkspace() {
       setAssistantNote(response.assistantMessage);
       if (action === "confirm") {
         setUnderstandingDetails("");
+        setGoalQuestionDraft("");
         setActiveStage("coplan");
       }
     } catch (requestError) {
@@ -551,7 +559,7 @@ export function BuildCompanionWorkspace() {
       setPlanningSession(response.planningSession);
       setGoalUnderstanding(response.goalUnderstanding);
       setPlanningQuestion(response.currentQuestion ?? null);
-      setUnderstandingDetails("");
+      setGoalQuestionDraft("");
       setAssistantNote(response.assistantMessage);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Could not update the goal");
@@ -1156,12 +1164,12 @@ export function BuildCompanionWorkspace() {
       rationale: "Check this goal before planning.",
       nextQuestion: null
     };
+    const projectGoalSentence = goalContract.learnerGoal || goalUnderstanding.learnerFacingRestatement || project.originalIdea;
+    const goalLabel = planningSession.status === "goal_understanding_confirmed" ? "Confirmed project goal" : "Working project goal";
     const contractSlots = [
-      { label: "Goal", value: goalContract.learnerGoal, field: "learnerGoal" },
-      { label: "Main thing", value: goalContract.primaryObject, field: "primaryObject" },
-      { label: "Who uses it", value: goalContract.actor, field: "actor" },
-      { label: "Core mechanic", value: goalContract.coreMechanic, field: "coreMechanic" },
-      { label: "End state", value: goalContract.endState, field: "endState" }
+      { label: "Main project object", helper: "What moves, changes, or gets acted on", value: goalContract.primaryObject, field: "primaryObject" },
+      { label: "Main mechanic", helper: "What the user does and what changes", value: goalContract.coreMechanic, field: "coreMechanic" },
+      { label: "Success state", helper: "How someone knows it worked", value: goalContract.endState, field: "endState" }
     ];
     const goalQuestion = readiness.nextQuestion;
 
@@ -1169,8 +1177,11 @@ export function BuildCompanionWorkspace() {
       <section className="understanding-screen">
         <aside className="coplan-idea-card">
           <span><Lightbulb size={20} /></span>
-          <h2>{t("Your idea")}</h2>
+          <h2>{t("Starting idea")}</h2>
           <p>{project.originalIdea}</p>
+          <hr />
+          <small>{t(goalLabel)}</small>
+          <strong className="side-goal-sentence">{t(projectGoalSentence)}</strong>
           <hr />
           <small>{t("Internal lens")}</small>
           <strong>{t(goalUnderstanding.planningLens.replace(/-/g, " "))}</strong>
@@ -1200,6 +1211,12 @@ export function BuildCompanionWorkspace() {
               <p>{t(readiness.rationale)}</p>
             </div>
 
+            <div className="goal-sentence-panel">
+              <small>{t("One-sentence project goal")}</small>
+              <strong>{t(projectGoalSentence)}</strong>
+              <p>{t(readiness.readyForConfirmation ? "This is the sentence we will carry into co-planning." : "This sentence will keep changing as you answer.")}</p>
+            </div>
+
             <div className="understanding-slots goal-contract-grid" aria-label={isZh ? "目标合同" : "Goal contract"}>
               {contractSlots.map((item) => {
                 const missing = (readiness.missingFields as string[]).includes(item.field);
@@ -1207,10 +1224,18 @@ export function BuildCompanionWorkspace() {
                 <article key={item.label} className={missing ? "missing" : ""}>
                   <small>{t(item.label)}</small>
                   <strong>{t(item.value || "Not sure yet")}</strong>
+                  <p>{t(item.helper)}</p>
                   {missing && <em>{t("Still unclear")}</em>}
                 </article>
               );})}
             </div>
+
+            {goalContract.actor && (
+              <p className="goal-context-note">
+                <User size={16} />
+                <span>{t("Experience context")}: {t(goalContract.actor)}</span>
+              </p>
+            )}
 
             {!!goalUnderstanding.safetyOrBoundaryNotes.length && (
               <p className="boundary-note-open">
@@ -1234,14 +1259,14 @@ export function BuildCompanionWorkspace() {
                 <label className="goal-question-input">
                   <span>{t("Type my answer")}</span>
                   <textarea
-                    value={understandingDetails}
-                    onChange={(event) => setUnderstandingDetails(event.target.value)}
+                    value={goalQuestionDraft}
+                    onChange={(event) => setGoalQuestionDraft(event.target.value)}
                     placeholder={t("For example: the player feeds the pet and tries to keep it happy...")}
                     maxLength={360}
                   />
                 </label>
                 <div className="understanding-actions">
-                  <button className="open-secondary" type="button" onClick={() => answerGoalQuestion(understandingDetails, "free-input")} disabled={isBusy || !understandingDetails.trim()}>
+                  <button className="open-secondary" type="button" onClick={() => answerGoalQuestion(goalQuestionDraft, "free-input")} disabled={isBusy || !goalQuestionDraft.trim()}>
                     {t("Add mine")}
                   </button>
                   <button className="open-secondary quiet" type="button" onClick={() => answerGoalQuestion("I'm not sure yet", "not-sure")} disabled={isBusy}>
@@ -1428,12 +1453,16 @@ export function BuildCompanionWorkspace() {
   function renderCoPlanningStudio() {
     if (!project || !planningSession) return renderIdeaStudio();
     const hasCandidates = planningSession.candidateParts.length > 0 && planningSession.status === "system_response_clarified";
+    const confirmedGoalSentence = planningSession.goalUnderstanding?.goalContract?.learnerGoal || goalUnderstanding?.goalContract?.learnerGoal || project.shortDescription || project.originalIdea;
 
     return (
       <section className="coplan-screen">
         <aside className="coplan-idea-card">
           <span><Lightbulb size={20} /></span>
-          <h2>{t("Your idea")}</h2>
+          <h2>{t("Confirmed project goal")}</h2>
+          <p className="side-goal-sentence">{t(confirmedGoalSentence)}</p>
+          <hr />
+          <small>{t("Starting idea")}</small>
           <p>{project.originalIdea}</p>
           <hr />
           <small>{t("We are co-planning first.")}</small>

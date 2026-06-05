@@ -341,7 +341,7 @@ const goalContractFieldValues = ["learnerGoal", "primaryObject", "actor", "coreM
 const goalClarificationChoiceSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["id", "label", "visibleBehavior"],
+  required: ["id", "label", "detail", "visibleBehavior", "fillsSlot", "systemRole"],
   properties: {
     id: { type: "string", maxLength: 48 },
     label: { type: "string", maxLength: 38 },
@@ -629,25 +629,32 @@ function goalChoice(id, label, visibleBehavior) {
 
 function goalContractQuestion(field, understanding) {
   if (field === "primaryObject") {
-    return {
-      id: "goal-primary-object",
-      prompt: "What is the main thing your project works with?",
-      choices: [
+    const choices = understanding.planningLens === "game-interaction"
+      ? [
+        goalChoice("object-obstacles", "A jumper and obstacles", "The player controls a jumper that must get past obstacles."),
+        goalChoice("object-platforms", "A jumper and platforms", "The player controls a character trying to land on platforms."),
+        goalChoice("object-collectibles", "A jumper and things to collect", "The player jumps to collect items while avoiding misses.")
+      ]
+      : [
         goalChoice("object-character", "A character or game object", "The project is about a visible character, player, or object."),
         goalChoice("object-picture", "A picture, drawing, or design", "The project changes or shows an image."),
         goalChoice("object-list", "Tasks, items, or a list", "The project helps people track things.")
-      ],
+      ];
+    return {
+      id: "goal-primary-object",
+      prompt: understanding.planningLens === "game-interaction" ? "What is the player controlling or trying to get past?" : "What is the main thing your project works with?",
+      choices,
       allowFreeText: true,
       allowNotSure: true,
-      targets: ["primaryObject"]
+      targets: understanding.planningLens === "game-interaction" ? ["primaryObject", "coreMechanic"] : ["primaryObject"]
     };
   }
   if (field === "coreMechanic") {
     const gameChoices = understanding.planningLens === "game-interaction"
       ? [
-        goalChoice("mechanic-jump", "The player jumps or avoids something", "The player repeats an action to avoid a challenge."),
-        goalChoice("mechanic-choose", "The player makes choices", "Choices change what happens in the game."),
-        goalChoice("mechanic-score", "The player earns points", "The main loop changes the score.")
+        goalChoice("mechanic-obstacles", "Jump over obstacles to survive", "The player times jumps to avoid obstacles, and each safe jump keeps the game going."),
+        goalChoice("mechanic-platforms", "Land on platforms without falling", "The player jumps between platforms, and missing one ends or resets the run."),
+        goalChoice("mechanic-collect", "Collect items while jumping", "The player jumps to collect items, and the score changes when items are collected.")
       ]
       : [
         goalChoice("mechanic-change", "The user changes one thing", "A visible part changes after the user's action."),
@@ -656,21 +663,28 @@ function goalContractQuestion(field, understanding) {
       ];
     return {
       id: "goal-core-mechanic",
-      prompt: understanding.planningLens === "game-interaction" ? "What should the player do again and again?" : "What is the main action that makes your project work?",
+      prompt: understanding.planningLens === "game-interaction" ? "What makes the jumping game challenging?" : "What is the main action that makes your project work?",
       choices: gameChoices,
       allowFreeText: true,
       allowNotSure: true,
-      targets: ["coreMechanic"]
+      targets: understanding.planningLens === "game-interaction" ? ["coreMechanic", "primaryObject"] : ["coreMechanic"]
     };
   }
-  return {
-    id: "goal-end-state",
-    prompt: "How will someone know the project reached its goal?",
-    choices: [
+  const choices = understanding.planningLens === "game-interaction"
+    ? [
+      goalChoice("end-survive-score", "Survive and raise the score", "The run keeps going while the player avoids mistakes, and the score climbs."),
+      goalChoice("end-reach-finish", "Reach a finish point", "The player reaches a finish platform, door, or level end."),
+      goalChoice("end-collect-target", "Collect a target number", "The player wins or finishes after collecting enough items.")
+    ]
+    : [
       goalChoice("end-clear-result", "A clear result appears", "The user sees the result they were trying to make."),
       goalChoice("end-score-or-win", "A score, win, or finish state appears", "The project shows progress or completion."),
       goalChoice("end-save-share", "The user can save or share it", "The final result can be kept or shown to someone.")
-    ],
+    ];
+  return {
+    id: "goal-end-state",
+    prompt: "How will someone know the project reached its goal?",
+    choices,
     allowFreeText: true,
     allowNotSure: true,
     targets: ["endState"]
@@ -679,6 +693,26 @@ function goalContractQuestion(field, understanding) {
 
 function hasSpecificSignal(text, patterns) {
   return patterns.some((pattern) => pattern.test(text));
+}
+
+function lowerFirst(value) {
+  const text = compactText(value, 220).replace(/[.?!]+$/u, "");
+  return text ? `${text.charAt(0).toLowerCase()}${text.slice(1)}` : text;
+}
+
+function goalPredicate(value) {
+  const text = lowerFirst(value);
+  if (/^(to|a|an|the)\b/u.test(text)) return text;
+  if (/^(survive|reach|collect|keep|save|raise|win|finish|avoid|land|unlock|score)\b/u.test(text)) return `to ${text}`;
+  return text;
+}
+
+function mechanicClause(value) {
+  const text = lowerFirst(value);
+  if (text.startsWith("jump ")) return `the player jumps ${text.slice("jump ".length)}`;
+  if (text.startsWith("land ")) return `the player lands ${text.slice("land ".length)}`;
+  if (text.startsWith("collect ")) return `the player collects ${text.slice("collect ".length)}`;
+  return text;
 }
 
 function inferGoalContract(idea, understanding, turns = []) {
@@ -704,8 +738,15 @@ function inferGoalContract(idea, understanding, turns = []) {
   }
   if (endTurn) endState = endTurn.answer;
 
+  const learnerGoal = compactText(
+    turns.length && coreMechanic && endState
+      ? `${idea.replace(/[.?!]+$/u, "")} where ${mechanicClause(coreMechanic)}, and the goal is ${goalPredicate(endState)}.`
+      : combined,
+    260
+  );
+
   return {
-    learnerGoal: compactText(combined, 260),
+    learnerGoal,
     primaryObject: primaryTurn?.answer ?? (vague && understanding.planningLens === "generic-custom-system" ? null : understanding.primaryObject),
     actor: actorTurn?.answer ?? (vague && understanding.planningLens === "generic-custom-system" ? null : understanding.userActor),
     coreMechanic,
@@ -716,26 +757,25 @@ function inferGoalContract(idea, understanding, turns = []) {
 function inferGoalReadiness(contract, understanding) {
   const missingFields = [];
   if (!contract.learnerGoal) missingFields.push("learnerGoal");
-  if (!contract.primaryObject) missingFields.push("primaryObject");
-  if (!contract.actor) missingFields.push("actor");
-  if (!contract.coreMechanic) missingFields.push("coreMechanic");
-  if (!contract.endState) missingFields.push("endState");
+  if (isThinGoalValue("primaryObject", contract.primaryObject, understanding)) missingFields.push("primaryObject");
+  if (isThinGoalValue("coreMechanic", contract.coreMechanic, understanding)) missingFields.push("coreMechanic");
+  if (isThinGoalValue("endState", contract.endState, understanding)) missingFields.push("endState");
   const readyForConfirmation = missingFields.length === 0;
   const confidence = readyForConfirmation ? "high" : missingFields.length <= 2 ? "medium" : "low";
-  const nextTarget = missingFields.includes("primaryObject")
-    ? "primaryObject"
-    : missingFields.includes("coreMechanic")
-      ? "coreMechanic"
-      : missingFields.includes("endState")
-        ? "endState"
+  const nextTarget = missingFields.includes("coreMechanic")
+    ? "coreMechanic"
+    : missingFields.includes("endState")
+      ? "endState"
+      : missingFields.includes("primaryObject")
+        ? "primaryObject"
         : missingFields[0];
   return {
     readyForConfirmation,
     missingFields,
     confidence,
     rationale: readyForConfirmation
-      ? "The goal has a main object, actor, core mechanic, and end state."
-      : "The goal needs one more concrete part before planning the system trail.",
+      ? "The goal has a concrete project object, a specific mechanic, and a clear success state."
+      : "The goal still needs a more specific object, mechanic, or success state before planning.",
     nextQuestion: nextTarget ? goalContractQuestion(nextTarget, understanding) : null
   };
 }
@@ -752,6 +792,36 @@ function buildGoalClarification(idea, turns = []) {
     goalReadiness,
     quietAI: goalReadiness.nextQuestion?.prompt ?? "This goal is clear enough to confirm before planning."
   };
+}
+
+function isThinGoalValue(field, value, understanding) {
+  const text = compactText(value, 220).toLowerCase();
+  if (!text || text === "not sure yet" || text === "i'm not sure yet") return true;
+
+  if (field === "primaryObject") {
+    if (/^(game object|project part|project content or parts|character or game object|jumping character)$/u.test(text)) return true;
+    if (understanding.planningLens === "game-interaction" && /^jumping (character|game object|player)$/u.test(text)) return true;
+  }
+
+  if (field === "coreMechanic") {
+    if (/^(player action changes the game|user action changes the project|the system reacts|the user changes one thing)$/u.test(text)) return true;
+    if (/^player (makes a character )?jump(s)?( while the score (keeps )?(increases|getting higher))?$/u.test(text)) return true;
+    if (understanding.planningLens === "game-interaction") {
+      const hasAction = /jump|avoid|collect|land|time|tap|move|dodge|survive/u.test(text);
+      const hasSpecificConsequence = /obstacle|platform|gap|enemy|spike|coin|item|score|point|fall|miss|collision|survive|timer|finish|level/u.test(text);
+      if (!hasAction || !hasSpecificConsequence) return true;
+    }
+  }
+
+  if (field === "endState") {
+    if (/^(a visible result|visible result|playable game screen|a clear result appears)$/u.test(text)) return true;
+    if (understanding.planningLens === "game-interaction") {
+      const hasGameEnd = /score|point|win|finish|survive|timer|time|level|target|collect|game over|lose|restart|higher|longer/u.test(text);
+      if (!hasGameEnd) return true;
+    }
+  }
+
+  return false;
 }
 
 function normalizeGoalUnderstanding(value, idea) {
@@ -800,17 +870,22 @@ function normalizeGoalUnderstanding(value, idea) {
     endState: value?.goalContract?.endState ?? fallback.goalContract.endState
   };
   const fallbackReadiness = inferGoalReadiness(goalContract, normalized);
-  const nextQuestion = normalizeGoalClarificationQuestion(value?.goalReadiness?.nextQuestion ?? fallbackReadiness.nextQuestion, normalized);
+  const llmMissingFields = (Array.isArray(value?.goalReadiness?.missingFields) ? value.goalReadiness.missingFields : [])
+    .filter((field) => goalContractFieldValues.includes(field));
+  const missingFields = Array.from(new Set([...fallbackReadiness.missingFields, ...llmMissingFields])).slice(0, 5);
+  const readyForConfirmation = fallbackReadiness.readyForConfirmation && value?.goalReadiness?.readyForConfirmation === true;
+  const nextQuestion = normalizeGoalClarificationQuestion(
+    readyForConfirmation ? null : fallbackReadiness.nextQuestion ?? value?.goalReadiness?.nextQuestion,
+    normalized
+  );
   return {
     ...normalized,
     goalContract,
     goalReadiness: {
-      readyForConfirmation: typeof value?.goalReadiness?.readyForConfirmation === "boolean" ? value.goalReadiness.readyForConfirmation : fallbackReadiness.readyForConfirmation,
-      missingFields: (Array.isArray(value?.goalReadiness?.missingFields) ? value.goalReadiness.missingFields : fallbackReadiness.missingFields)
-        .filter((field) => goalContractFieldValues.includes(field))
-        .slice(0, 5),
-      confidence: ["high", "medium", "low"].includes(value?.goalReadiness?.confidence) ? value.goalReadiness.confidence : fallbackReadiness.confidence,
-      rationale: compactText(value?.goalReadiness?.rationale || fallbackReadiness.rationale, 180),
+      readyForConfirmation,
+      missingFields,
+      confidence: readyForConfirmation ? "high" : fallbackReadiness.confidence,
+      rationale: compactText(readyForConfirmation ? (value?.goalReadiness?.rationale || fallbackReadiness.rationale) : fallbackReadiness.rationale, 180),
       nextQuestion
     }
   };
@@ -1203,7 +1278,10 @@ export async function startPlanning(body) {
         "Do not generate a final System Trail.",
         "Do not ask a co-planning question yet.",
         "First confirm the learner goal contract.",
-        "A ready goal must include primaryObject, actor, coreMechanic, and endState.",
+        "A ready goal must include a specific primaryObject, a specific coreMechanic, and a concrete endState.",
+        "actor is context only; do not block readiness only because actor is generic.",
+        "Do not mark generic game phrases as ready: jumping character, player action changes the game, player makes a character jump.",
+        "For a jumping game, ask what makes jumping challenging: obstacles, platforms, collectibles, timing, or another concrete loop.",
         "If not ready, ask exactly one direct or indirect goal clarification question."
       ]
     },
@@ -1279,7 +1357,10 @@ export async function confirmGoalUnderstanding(body) {
           "Do not generate a final System Trail.",
           "Do not generate candidate system parts.",
           "Do not write code.",
-          "A ready goal must include primaryObject, actor, coreMechanic, and endState.",
+          "A ready goal must include a specific primaryObject, a specific coreMechanic, and a concrete endState.",
+          "actor is context only; do not block readiness only because actor is generic.",
+          "Do not mark generic game phrases as ready: jumping character, player action changes the game, player makes a character jump.",
+          "For a jumping game, ask what makes jumping challenging: obstacles, platforms, collectibles, timing, or another concrete loop.",
           "If not ready, ask exactly one next goal clarification question."
         ]
       },

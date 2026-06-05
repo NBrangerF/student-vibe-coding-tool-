@@ -1317,6 +1317,12 @@
   font-size: 12px;
 }
 
+.side-goal-sentence {
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
 .understanding-main,
 .coplan-main,
 .draft-review-main,
@@ -1383,10 +1389,14 @@
 }
 
 .understanding-slots article {
+  display: grid;
+  align-content: start;
+  gap: 8px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.76);
-  padding: 14px;
+  padding: 16px;
+  min-height: 176px;
 }
 
 .understanding-slots small {
@@ -1399,6 +1409,14 @@
 .understanding-slots strong {
   color: var(--ink);
   line-height: 1.35;
+}
+
+.understanding-slots article p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
 }
 
 .goal-readiness-row {
@@ -1437,7 +1455,41 @@
 }
 
 .goal-contract-grid {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.goal-sentence-panel {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(79, 70, 229, 0.18);
+  border-radius: 8px;
+  background: rgba(238, 242, 255, 0.54);
+  padding: 16px;
+}
+
+.goal-sentence-panel small {
+  color: var(--ink-soft);
+  font-weight: 850;
+}
+
+.goal-sentence-panel strong {
+  color: var(--ink);
+  font-size: 21px;
+  line-height: 1.35;
+}
+
+.goal-sentence-panel p,
+.goal-context-note {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.goal-context-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .understanding-slots article.missing {

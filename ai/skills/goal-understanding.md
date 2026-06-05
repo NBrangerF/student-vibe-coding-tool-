@@ -12,8 +12,8 @@ The minimum confirmed goal contract is:
 
 - `learnerGoal`: the learner-facing goal in simple language.
 - `primaryObject`: the main thing the project works with.
-- `actor`: who uses or experiences the project.
-- `coreMechanic`: the repeatable action/change that makes the project work.
+- `actor`: who uses or experiences the project. This is context, not a readiness blocker by itself.
+- `coreMechanic`: the repeatable action/change that makes the project work, including why the action matters.
 - `endState`: how someone knows the goal has been reached.
 
 ## Rules
@@ -25,6 +25,8 @@ The minimum confirmed goal contract is:
 - Judge whether the goal is ready for confirmation.
 - If the goal is not ready, identify the missing fields and ask exactly one direct or indirect clarification question.
 - Prefer asking about `coreMechanic` or `endState` when the project type is obvious but the idea is immature.
+- Do not treat generic game phrases as ready, including `jumping character`, `player action changes the game`, or `player makes a character jump`.
+- For a jumping game, clarify the concrete loop: what the player jumps over, lands on, collects, avoids, survives, or reaches.
 - If confidence is low, prepare a clarification strategy based on universal system grammar.
 - Avoid implementation terms such as function, variable, API, component, conditional, and state management.
 - If the idea is a learning or homework helper, include a learning boundary note.
