@@ -11,6 +11,7 @@ import {
   GoalClarificationTurn,
   GoalContract,
   GoalContractField,
+  GoalQuestionTarget,
   GoalReadiness,
   GoalUnderstanding,
   GoalInterviewResponse,
@@ -729,15 +730,15 @@ export function inferGoalUnderstanding(idea: string): GoalUnderstanding {
       learnerFacingRestatement: "You want to make a game where a player can do something and see the game respond.",
       planningLens: "game-interaction",
       confidence: "high",
-      primaryObject: /jump|跳/.test(text) ? "jumping character" : "game object",
-      desiredChange: "player action changes the game",
-      likelyOutput: "a playable game screen",
+      primaryObject: null,
+      desiredChange: null,
+      likelyOutput: null,
       userActor: "player",
       firstPossibleAction: "press start, choose a character, or take the main action",
       systemResponseHypothesis: "the game responds on screen",
       systemGrammar: {
         actor: "player",
-        primaryObject: /jump|跳/.test(text) ? "jumping character" : "game object",
+        primaryObject: null,
         input: "tap, click, press a key, or choose an action",
         transformation: "the game updates after the player's action",
         output: "visible game response",
@@ -994,7 +995,75 @@ function hasSpecificSignal(text: string, patterns: RegExp[]): boolean {
   return patterns.some((pattern) => pattern.test(text));
 }
 
-function contractQuestion(field: GoalContractField, understanding: GoalUnderstanding): GoalClarificationQuestion {
+function mockNeedsEngagementAnchor(understanding: GoalUnderstanding) {
+  return ["game-interaction", "story-world", "simulation"].includes(understanding.planningLens);
+}
+
+function mockEngagementQuestion(understanding: GoalUnderstanding): GoalClarificationQuestion {
+  const jump = /jump|跳/i.test(understanding.originalIdea || understanding.projectTitle);
+  return {
+    id: "goal-character-or-subject",
+    prompt: `Who or what should ${titleFromIdea(understanding.originalIdea || "your project").toLowerCase()} be about?`,
+    choices: jump
+      ? [
+        goalChoice("anchor-dinosaur-lava", "a dinosaur in a lava world", "The project gets a character and world immediately."),
+        goalChoice("anchor-robot-platforms", "a robot on broken platforms", "The player character and challenge feel more specific."),
+        goalChoice("anchor-invented", "a character I invent myself", "The student keeps ownership of the main character.")
+      ]
+      : [
+        goalChoice("anchor-character", "a character I care about", "The project has a main subject the student wants to make."),
+        goalChoice("anchor-world", "a world or theme I like", "The project has a setting that makes it feel personal."),
+        goalChoice("anchor-invented", "something I invent myself", "The student keeps ownership of the idea.")
+      ],
+    allowFreeText: true,
+    allowNotSure: true,
+    targets: ["characterOrSubject"]
+  };
+}
+
+function lowerFirst(value: string): string {
+  const text = value.trim().replace(/[.?!]+$/u, "");
+  return text ? `${text.charAt(0).toLowerCase()}${text.slice(1)}` : text;
+}
+
+function goalPredicate(value: string): string {
+  const text = lowerFirst(value);
+  if (/^(to|a|an|the)\b/u.test(text)) return text;
+  if (/^(survive|reach|collect|keep|save|raise|win|finish|avoid|land|unlock|score)\b/u.test(text)) return `to ${text}`;
+  return text;
+}
+
+function mechanicClause(value: string, subject = "the player"): string {
+  const text = lowerFirst(value);
+  if (text.startsWith("jump ")) return `${subject} jumps ${text.slice("jump ".length)}`;
+  if (text.startsWith("land ")) return `${subject} lands ${text.slice("land ".length)}`;
+  if (text.startsWith("collect ")) return `${subject} collects ${text.slice("collect ".length)}`;
+  return text;
+}
+
+function primaryObjectFromMechanic(value?: string | null): string | null {
+  const text = (value ?? "").toLowerCase();
+  if (!text) return null;
+  if (/obstacle|spike|enemy|barrier|block/.test(text)) return "obstacles the player jumps over";
+  if (/platform|ledge|ground|floor/.test(text)) return "platforms the player lands on";
+  if (/coin|item|star|gem|collect/.test(text)) return "items the player collects while jumping";
+  if (/gap|hole|pit/.test(text)) return "gaps the player avoids falling into";
+  return null;
+}
+
+function contractGoalSentence(idea: string, contract: GoalContract): string {
+  const base = idea.trim().replace(/[.?!]+$/u, "");
+  const subject = contract.engagementAnchor?.characterOrSubject || "the player";
+  if (contract.coreMechanic && contract.endState) {
+    return `${base} where ${mechanicClause(contract.coreMechanic, subject)}, and the goal is ${goalPredicate(contract.endState)}.`;
+  }
+  if (contract.coreMechanic) return `${base} where ${mechanicClause(contract.coreMechanic, subject)}.`;
+  if (contract.engagementAnchor?.characterOrSubject) return `${base} about ${contract.engagementAnchor.characterOrSubject}.`;
+  return base;
+}
+
+function contractQuestion(field: GoalQuestionTarget, understanding: GoalUnderstanding): GoalClarificationQuestion {
+  if (field === "characterOrSubject") return mockEngagementQuestion(understanding);
   const lens = understanding.planningLens;
   if (field === "primaryObject") {
     return {
@@ -1012,16 +1081,23 @@ function contractQuestion(field: GoalContractField, understanding: GoalUnderstan
   }
 
   if (field === "coreMechanic") {
+    const jump = /jump|跳/i.test(understanding.originalIdea || understanding.projectTitle);
     const gameChoices = lens === "game-interaction"
-      ? [
-        goalChoice("mechanic-jump", "The player jumps or avoids something", "The player repeats an action to avoid a challenge."),
-        goalChoice("mechanic-choose", "The player makes choices", "Choices change what happens in the game."),
-        goalChoice("mechanic-score", "The player earns points", "The main loop changes the score.")
-      ]
+      ? jump
+        ? [
+          goalChoice("mechanic-jump-over-obstacles", "Jump over obstacles without hitting them", "The player keeps timing jumps to avoid obstacles."),
+          goalChoice("mechanic-land-platforms", "Land on platforms without falling", "The player keeps jumping to safe places."),
+          goalChoice("mechanic-collect-stars", "Collect stars while jumping", "The player jumps to collect items and avoid missing them.")
+        ]
+        : [
+          goalChoice("mechanic-avoid", "Avoid obstacles while moving", "The player repeats an action to avoid a visible challenge."),
+          goalChoice("mechanic-collect", "Collect items to make progress", "The player gathers visible items that change progress."),
+          goalChoice("mechanic-unlock", "Unlock a new area after choices", "Player choices open the next part of the game.")
+        ]
       : [
-        goalChoice("mechanic-change", "The user changes one thing", "A visible part changes after the user's action."),
-        goalChoice("mechanic-choose-result", "The user chooses and sees a result", "A choice leads to a visible result."),
-        goalChoice("mechanic-react", "The system reacts", "The project responds after the user acts.")
+        goalChoice("mechanic-change", "Change one visible thing", "A visible part changes after the user's action."),
+        goalChoice("mechanic-choose-result", "Choose something and see a result", "A choice leads to a visible result."),
+        goalChoice("mechanic-react", "Make the project respond to an action", "The project responds after the user acts.")
       ];
     return {
       id: "goal-core-mechanic",
@@ -1035,11 +1111,11 @@ function contractQuestion(field: GoalContractField, understanding: GoalUnderstan
 
   return {
     id: "goal-end-state",
-    prompt: "How will someone know the project reached its goal?",
+    prompt: lens === "game-interaction" ? "How will the player know they did well?" : "How will someone know the project reached its goal?",
     choices: [
-      goalChoice("end-clear-result", "A clear result appears", "The user sees the result they were trying to make."),
-      goalChoice("end-score-or-win", "A score, win, or finish state appears", "The project shows progress or completion."),
-      goalChoice("end-save-share", "The user can save or share it", "The final result can be kept or shown to someone.")
+      goalChoice("end-score-goes-up", "The score goes up", "The project shows progress while the user succeeds."),
+      goalChoice("end-finish-line", "The player reaches a finish line", "The project shows a clear finish moment."),
+      goalChoice("end-new-level", "A new level opens", "The project shows that the player completed the first challenge.")
     ],
     allowFreeText: true,
     allowNotSure: true,
@@ -1077,26 +1153,41 @@ function inferGoalContract(idea: string, understanding: GoalUnderstanding, turns
 
   const primaryTurn = turns.find((turn) => turn.targets.includes("primaryObject"));
   const actorTurn = turns.find((turn) => turn.targets.includes("actor"));
+  const characterTurn = turns.find((turn) => turn.targets.includes("characterOrSubject"));
+  const engagementAnchor = {
+    characterOrSubject: characterTurn?.answer ?? null,
+    worldOrTheme: /lava|岩浆|火山/i.test(characterTurn?.answer ?? "") ? "lava world" : null,
+    mood: null,
+    studentLanguage: characterTurn?.answer ?? null
+  };
 
-  return {
-    learnerGoal: combined,
-    primaryObject: primaryTurn?.answer ?? primaryObject,
+  const contract: GoalContract = {
+    learnerGoal: "",
+    primaryObject: primaryTurn?.answer ?? primaryObjectFromMechanic(coreMechanic) ?? primaryObject,
     actor: actorTurn?.answer ?? actor,
     coreMechanic,
-    endState
+    endState,
+    engagementAnchor
   };
+  contract.learnerGoal = contractGoalSentence(idea, contract);
+  return contract;
 }
 
 function goalReadiness(contract: GoalContract, understanding: GoalUnderstanding): GoalReadiness {
   const missingFields: GoalContractField[] = [];
   if (!contract.learnerGoal.trim()) missingFields.push("learnerGoal");
   if (!contract.primaryObject) missingFields.push("primaryObject");
-  if (!contract.actor) missingFields.push("actor");
   if (!contract.coreMechanic) missingFields.push("coreMechanic");
   if (!contract.endState) missingFields.push("endState");
-  const readyForConfirmation = missingFields.length === 0;
-  const confidence: GoalReadiness["confidence"] = readyForConfirmation ? "high" : missingFields.length <= 2 ? "medium" : "low";
-  const nextTarget = missingFields.includes("primaryObject")
+  const missingEngagementFields = mockNeedsEngagementAnchor(understanding) && !contract.engagementAnchor?.characterOrSubject
+    ? ["characterOrSubject" as const]
+    : [];
+  const readyForPlanning = missingFields.length === 0;
+  const readyForConfirmation = readyForPlanning && missingEngagementFields.length === 0;
+  const confidence: GoalReadiness["confidence"] = readyForConfirmation ? "high" : missingFields.length + missingEngagementFields.length <= 2 ? "medium" : "low";
+  const nextTarget = missingEngagementFields.includes("characterOrSubject")
+    ? "characterOrSubject"
+    : missingFields.includes("primaryObject")
     ? "primaryObject"
     : missingFields.includes("coreMechanic")
       ? "coreMechanic"
@@ -1106,7 +1197,9 @@ function goalReadiness(contract: GoalContract, understanding: GoalUnderstanding)
 
   return {
     readyForConfirmation,
+    readyForPlanning,
     missingFields,
+    missingEngagementFields,
     confidence,
     rationale: readyForConfirmation
       ? "The goal has a main object, actor, core mechanic, and end state."
@@ -1370,9 +1463,9 @@ export function getPlanningQuestion(session: PlanningSession): PlanningQuestion 
     };
   } else if (understanding.confidence === "low") {
     prompts["finished-artifact"] = {
-      title: "Main thing",
-      prompt: "What is the main thing someone will work with?",
-      quietAiNote: "Once we know the main thing, we can plan how it changes."
+      title: "What appears first",
+      prompt: "What should someone see or work with first?",
+      quietAiNote: "Once we know what appears first, we can plan how it changes."
     };
   }
 

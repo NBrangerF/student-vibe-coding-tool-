@@ -130,6 +130,15 @@ export interface GoalUnderstanding {
 }
 
 export type GoalContractField = "learnerGoal" | "primaryObject" | "actor" | "coreMechanic" | "endState";
+export type EngagementAnchorField = "characterOrSubject" | "worldOrTheme" | "mood";
+export type GoalQuestionTarget = GoalContractField | EngagementAnchorField;
+
+export interface EngagementAnchor {
+  characterOrSubject: string | null;
+  worldOrTheme: string | null;
+  mood: string | null;
+  studentLanguage: string | null;
+}
 
 export interface GoalContract {
   learnerGoal: string;
@@ -137,6 +146,7 @@ export interface GoalContract {
   actor: string | null;
   coreMechanic: string | null;
   endState: string | null;
+  engagementAnchor?: EngagementAnchor;
 }
 
 export interface GoalClarificationQuestion {
@@ -145,12 +155,14 @@ export interface GoalClarificationQuestion {
   choices: PlanningChoice[];
   allowFreeText: boolean;
   allowNotSure: boolean;
-  targets: GoalContractField[];
+  targets: GoalQuestionTarget[];
 }
 
 export interface GoalReadiness {
   readyForConfirmation: boolean;
+  readyForPlanning?: boolean;
   missingFields: GoalContractField[];
+  missingEngagementFields?: EngagementAnchorField[];
   confidence: ConfidenceLevel;
   rationale: string;
   nextQuestion: GoalClarificationQuestion | null;
@@ -161,7 +173,7 @@ export interface PlanningChoice {
   label: string;
   detail?: string;
   visibleBehavior?: string;
-  fillsSlot?: SystemGrammarSlot;
+  fillsSlot?: SystemGrammarSlot | GoalQuestionTarget;
   systemRole?: string;
 }
 
@@ -229,7 +241,7 @@ export interface GoalClarificationTurn {
   prompt: string;
   answer: string;
   source: PlanningResponseSource;
-  targets: GoalContractField[];
+  targets: GoalQuestionTarget[];
   createdAt: string;
 }
 

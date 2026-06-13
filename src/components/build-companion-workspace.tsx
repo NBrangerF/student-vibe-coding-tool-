@@ -248,11 +248,12 @@ function candidateSourceLabel(source: CandidateSystemPart["source"]) {
 }
 
 function goalFieldLabel(field: string) {
-  if (field === "learnerGoal") return "Goal";
-  if (field === "primaryObject") return "Main thing";
-  if (field === "actor") return "Who uses it";
-  if (field === "coreMechanic") return "Core mechanic";
-  if (field === "endState") return "End state";
+  if (field === "learnerGoal") return "Project goal";
+  if (field === "primaryObject") return "What we can see";
+  if (field === "actor") return "Experience context";
+  if (field === "coreMechanic") return "What happens";
+  if (field === "endState") return "What counts as done";
+  if (field === "characterOrSubject") return "Project identity";
   return field;
 }
 
@@ -1155,7 +1156,13 @@ export function BuildCompanionWorkspace() {
       primaryObject: goalUnderstanding.primaryObject,
       actor: goalUnderstanding.userActor,
       coreMechanic: goalUnderstanding.desiredChange,
-      endState: goalUnderstanding.likelyOutput
+      endState: goalUnderstanding.likelyOutput,
+      engagementAnchor: {
+        characterOrSubject: null,
+        worldOrTheme: null,
+        mood: null,
+        studentLanguage: null
+      }
     };
     const readiness = goalUnderstanding.goalReadiness ?? {
       readyForConfirmation: goalUnderstanding.confidence !== "low",
@@ -1167,11 +1174,13 @@ export function BuildCompanionWorkspace() {
     const projectGoalSentence = goalContract.learnerGoal || goalUnderstanding.learnerFacingRestatement || project.originalIdea;
     const goalLabel = planningSession.status === "goal_understanding_confirmed" ? "Confirmed project goal" : "Working project goal";
     const contractSlots = [
-      { label: "Main project object", helper: "What moves, changes, or gets acted on", value: goalContract.primaryObject, field: "primaryObject" },
-      { label: "Main mechanic", helper: "What the user does and what changes", value: goalContract.coreMechanic, field: "coreMechanic" },
-      { label: "Success state", helper: "How someone knows it worked", value: goalContract.endState, field: "endState" }
+      { label: "What we can see", helper: "The concrete thing this project works with", value: goalContract.primaryObject, field: "primaryObject" },
+      { label: "What happens", helper: "The action and visible response", value: goalContract.coreMechanic, field: "coreMechanic" },
+      { label: "What counts as done", helper: "The result that tells us it worked", value: goalContract.endState, field: "endState" }
     ];
     const goalQuestion = readiness.nextQuestion;
+    const engagementAnchor = goalContract.engagementAnchor;
+    const missingEngagement = readiness.missingEngagementFields ?? [];
 
     return (
       <section className="understanding-screen">
@@ -1230,6 +1239,19 @@ export function BuildCompanionWorkspace() {
               );})}
             </div>
 
+            <div className={`engagement-anchor-panel ${missingEngagement.length ? "missing" : ""}`}>
+              <small>{t("Project identity")}</small>
+              <strong>{t(engagementAnchor?.characterOrSubject || "Not sure yet")}</strong>
+              <p>{t("Who or what makes this feel like your project")}</p>
+              {(engagementAnchor?.worldOrTheme || engagementAnchor?.mood) && (
+                <div>
+                  {engagementAnchor.worldOrTheme && <span>{t("World")}: {t(engagementAnchor.worldOrTheme)}</span>}
+                  {engagementAnchor.mood && <span>{t("Feeling")}: {t(engagementAnchor.mood)}</span>}
+                </div>
+              )}
+              {missingEngagement.length > 0 && <em>{t("Still needs your character or theme")}</em>}
+            </div>
+
             {goalContract.actor && (
               <p className="goal-context-note">
                 <User size={16} />
@@ -1246,22 +1268,14 @@ export function BuildCompanionWorkspace() {
 
             {goalQuestion && (
               <div className="understanding-clarify goal-question-panel">
-                <strong>{t("I’m not fully sure yet.")}</strong>
+                <strong>{t("Answer this in your own words")}</strong>
                 <p>{t(goalQuestion.prompt)}</p>
-                <div>
-                  {goalQuestion.choices.map((choice) => (
-                    <button key={choice.id} type="button" onClick={() => answerGoalQuestion(choice.label, "choice")} disabled={isBusy}>
-                      <strong>{t(choice.label)}</strong>
-                      {(choice.detail || choice.visibleBehavior) && <small>{t(choice.detail || choice.visibleBehavior)}</small>}
-                    </button>
-                  ))}
-                </div>
                 <label className="goal-question-input">
-                  <span>{t("Type my answer")}</span>
+                  <span>{t("My answer")}</span>
                   <textarea
                     value={goalQuestionDraft}
                     onChange={(event) => setGoalQuestionDraft(event.target.value)}
-                    placeholder={t("For example: the player feeds the pet and tries to keep it happy...")}
+                    placeholder={t("Write the exact object, action, or result you want...")}
                     maxLength={360}
                   />
                 </label>
@@ -1272,6 +1286,17 @@ export function BuildCompanionWorkspace() {
                   <button className="open-secondary quiet" type="button" onClick={() => answerGoalQuestion("I'm not sure yet", "not-sure")} disabled={isBusy}>
                     {t("I'm not sure")}
                   </button>
+                </div>
+                <div className="goal-choice-helper">
+                  <span>{t("Quick ideas if helpful")}</span>
+                  <div>
+                    {goalQuestion.choices.map((choice) => (
+                      <button key={choice.id} type="button" onClick={() => answerGoalQuestion(choice.label, "choice")} disabled={isBusy}>
+                        <strong>{t(choice.label)}</strong>
+                        {(choice.detail || choice.visibleBehavior) && <small>{t(choice.detail || choice.visibleBehavior)}</small>}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}

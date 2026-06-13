@@ -1506,6 +1506,55 @@
   font-weight: 850;
 }
 
+.engagement-anchor-panel {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(124, 58, 237, 0.18);
+  border-radius: 8px;
+  background: #f7f3ff;
+  padding: 14px 16px;
+}
+
+.engagement-anchor-panel.missing {
+  border-color: rgba(124, 58, 237, 0.32);
+  background: #fbf7ff;
+}
+
+.engagement-anchor-panel small {
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.engagement-anchor-panel strong {
+  color: var(--ink);
+  font-size: 22px;
+  line-height: 1.18;
+}
+
+.engagement-anchor-panel p {
+  color: var(--ink-soft);
+  font-weight: 750;
+}
+
+.engagement-anchor-panel div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.engagement-anchor-panel span,
+.engagement-anchor-panel em {
+  width: fit-content;
+  border-radius: 999px;
+  background: #fff;
+  color: #5b21b6;
+  padding: 5px 8px;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 850;
+}
+
 .understanding-clarify {
   display: grid;
   gap: 12px;
@@ -1515,7 +1564,18 @@
   padding: 16px;
 }
 
-.understanding-clarify div {
+.goal-choice-helper {
+  display: grid;
+  gap: 8px;
+}
+
+.goal-choice-helper > span {
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.goal-choice-helper > div {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;

@@ -186,15 +186,15 @@ function inferGoalUnderstanding(idea) {
       learnerFacingRestatement: "You want to make a game where a player can do something and see the game respond.",
       planningLens: "game-interaction",
       confidence: "high",
-      primaryObject: "game object",
-      desiredChange: "player action creates a visible response",
-      likelyOutput: "a playable game screen",
+      primaryObject: null,
+      desiredChange: null,
+      likelyOutput: null,
       userActor: "player",
       firstPossibleAction: "press start, choose a character, or take the main action",
       systemResponseHypothesis: "the game responds on screen",
       systemGrammar: {
         actor: "player",
-        primaryObject: "game object",
+        primaryObject: null,
         input: "tap, click, press a key, or choose an action",
         transformation: "the game updates after the player's action",
         output: "visible game response",
@@ -313,7 +313,7 @@ const planningChoiceSchema = {
   required: ["id", "label", "visibleBehavior", "fillsSlot", "systemRole"],
   properties: {
     id: { type: "string", maxLength: 48 },
-    label: { type: "string", maxLength: 38 },
+    label: { type: "string", maxLength: 72 },
     visibleBehavior: { type: "string", maxLength: 140 },
     fillsSlot: { type: "string", maxLength: 32 },
     systemRole: { type: "string", maxLength: 42 }
@@ -337,6 +337,8 @@ const planningQuestionSchema = {
 };
 
 const goalContractFieldValues = ["learnerGoal", "primaryObject", "actor", "coreMechanic", "endState"];
+const engagementAnchorFieldValues = ["characterOrSubject", "worldOrTheme", "mood"];
+const goalQuestionTargetValues = [...goalContractFieldValues, ...engagementAnchorFieldValues];
 
 const goalClarificationChoiceSchema = {
   type: "object",
@@ -344,7 +346,7 @@ const goalClarificationChoiceSchema = {
   required: ["id", "label", "detail", "visibleBehavior", "fillsSlot", "systemRole"],
   properties: {
     id: { type: "string", maxLength: 48 },
-    label: { type: "string", maxLength: 38 },
+    label: { type: "string", maxLength: 72 },
     detail: { type: "string", maxLength: 140 },
     visibleBehavior: { type: "string", maxLength: 140 },
     fillsSlot: { type: "string", maxLength: 32 },
@@ -364,33 +366,48 @@ const goalClarificationQuestionSchema = {
         choices: { type: "array", minItems: 2, maxItems: 4, items: goalClarificationChoiceSchema },
         allowFreeText: { type: "boolean" },
         allowNotSure: { type: "boolean" },
-        targets: { type: "array", minItems: 1, maxItems: 2, items: { type: "string", enum: goalContractFieldValues } }
+        targets: { type: "array", minItems: 1, maxItems: 2, items: { type: "string", enum: goalQuestionTargetValues } }
       }
     },
     { type: "null" }
   ]
 };
 
+const engagementAnchorSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["characterOrSubject", "worldOrTheme", "mood", "studentLanguage"],
+  properties: {
+    characterOrSubject: { anyOf: [{ type: "string", maxLength: 120 }, { type: "null" }] },
+    worldOrTheme: { anyOf: [{ type: "string", maxLength: 120 }, { type: "null" }] },
+    mood: { anyOf: [{ type: "string", maxLength: 80 }, { type: "null" }] },
+    studentLanguage: { anyOf: [{ type: "string", maxLength: 180 }, { type: "null" }] }
+  }
+};
+
 const goalContractSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["learnerGoal", "primaryObject", "actor", "coreMechanic", "endState"],
+  required: ["learnerGoal", "primaryObject", "actor", "coreMechanic", "endState", "engagementAnchor"],
   properties: {
     learnerGoal: { type: "string", maxLength: 260 },
     primaryObject: { anyOf: [{ type: "string", maxLength: 100 }, { type: "null" }] },
     actor: { anyOf: [{ type: "string", maxLength: 80 }, { type: "null" }] },
     coreMechanic: { anyOf: [{ type: "string", maxLength: 160 }, { type: "null" }] },
-    endState: { anyOf: [{ type: "string", maxLength: 160 }, { type: "null" }] }
+    endState: { anyOf: [{ type: "string", maxLength: 160 }, { type: "null" }] },
+    engagementAnchor: engagementAnchorSchema
   }
 };
 
 const goalReadinessSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["readyForConfirmation", "missingFields", "confidence", "rationale", "nextQuestion"],
+  required: ["readyForConfirmation", "readyForPlanning", "missingFields", "missingEngagementFields", "confidence", "rationale", "nextQuestion"],
   properties: {
     readyForConfirmation: { type: "boolean" },
+    readyForPlanning: { type: "boolean" },
     missingFields: { type: "array", maxItems: 5, items: { type: "string", enum: goalContractFieldValues } },
+    missingEngagementFields: { type: "array", maxItems: 3, items: { type: "string", enum: engagementAnchorFieldValues } },
     confidence: { type: "string", enum: ["high", "medium", "low"] },
     rationale: { type: "string", maxLength: 180 },
     nextQuestion: goalClarificationQuestionSchema
@@ -582,7 +599,7 @@ function normalizeQuestion(question, fallbackId) {
       .slice(0, 4)
       .map((choice, index) => ({
         id: compactText(choice.id || `${id}-${index + 1}`, 48),
-        label: compactText(choice.label, 38),
+        label: compactText(choice.label, 72),
         visibleBehavior: compactText(choice.visibleBehavior || choice.label, 140),
         fillsSlot: compactText(choice.fillsSlot || "", 32),
         systemRole: compactText(choice.systemRole || "", 42)
@@ -599,16 +616,16 @@ function normalizeGoalClarificationQuestion(question, fallbackUnderstanding) {
   if (!question) return null;
   const id = compactText(question.id || "goal-core-mechanic", 48);
   const targets = (Array.isArray(question.targets) ? question.targets : ["coreMechanic"])
-    .filter((field) => goalContractFieldValues.includes(field))
+    .filter((field) => goalQuestionTargetValues.includes(field))
     .slice(0, 2);
   const choices = (Array.isArray(question.choices) ? question.choices : [])
     .slice(0, 4)
     .map((choice, index) => ({
       id: compactText(choice.id || `${id}-${index + 1}`, 48),
-      label: compactText(choice.label, 38),
+      label: compactText(choice.label, 72),
       visibleBehavior: compactText(choice.visibleBehavior || choice.detail || choice.label, 140),
       detail: compactText(choice.detail || choice.visibleBehavior || "", 140),
-      fillsSlot: goalContractFieldValues.includes(choice.fillsSlot) ? choice.fillsSlot : undefined,
+      fillsSlot: goalQuestionTargetValues.includes(choice.fillsSlot) ? choice.fillsSlot : undefined,
       systemRole: compactText(choice.systemRole || "", 42)
     }))
     .filter((choice) => choice.label)
@@ -627,16 +644,384 @@ function goalChoice(id, label, visibleBehavior) {
   return { id, label, visibleBehavior, detail: visibleBehavior };
 }
 
+function projectSubject(understanding) {
+  const source = compactText(understanding.originalIdea || understanding.projectTitle || "your project", 100);
+  const cleaned = source
+    .replace(/^i\s+want\s+to\s+(make|build|create)\s+/iu, "")
+    .replace(/^(make|build|create)\s+/iu, "")
+    .replace(/[.?!]+$/u, "")
+    .trim();
+  return cleaned || "your project";
+}
+
+function needsEngagementAnchor(understanding) {
+  const text = `${understanding.originalIdea || ""} ${understanding.projectTitle || ""}`.toLowerCase();
+  return [
+    "game-interaction",
+    "story-world",
+    "simulation"
+  ].includes(understanding.planningLens) || /pet|character|world|story|adventure|avatar|宠物|角色|世界|故事|冒险/u.test(text);
+}
+
+function inferTextAnchor(text, patterns) {
+  for (const [pattern, value] of patterns) {
+    if (pattern.test(text)) return value;
+  }
+  return null;
+}
+
+function inferEngagementAnchor(idea, understanding, turns = []) {
+  const combined = [idea, ...turns.map((turn) => turn.answer)].join(" ").toLowerCase();
+  const characterTurn = turns.find((turn) => Array.isArray(turn.targets) && turn.targets.includes("characterOrSubject"));
+  const worldTurn = turns.find((turn) => Array.isArray(turn.targets) && turn.targets.includes("worldOrTheme"));
+  const moodTurn = turns.find((turn) => Array.isArray(turn.targets) && turn.targets.includes("mood"));
+
+  const inferredCharacter = inferTextAnchor(combined, [
+    [/dinosaur|恐龙/u, "dinosaur"],
+    [/ultraman|奥特曼/u, "Ultraman"],
+    [/transformer|变形金刚/u, "Transformer"],
+    [/robot|机器人/u, "robot"],
+    [/cat|kitten|猫/u, "cat"],
+    [/dog|puppy|狗/u, "dog"],
+    [/pet|宠物/u, "pet"],
+    [/dragon|龙/u, "dragon"],
+    [/monster|怪兽/u, "monster"],
+    [/hero|superhero|英雄/u, "hero"]
+  ]);
+  const inferredWorld = inferTextAnchor(combined, [
+    [/lava|volcano|火山|岩浆/u, "lava world"],
+    [/space|planet|宇宙|星球/u, "space"],
+    [/forest|jungle|森林/u, "forest"],
+    [/city|rooftop|城市|屋顶/u, "city rooftops"],
+    [/school|学校/u, "school"],
+    [/ocean|sea|underwater|海洋|水下/u, "ocean"]
+  ]);
+  const inferredMood = inferTextAnchor(combined, [
+    [/funny|silly|搞笑/u, "funny"],
+    [/cute|可爱/u, "cute"],
+    [/cool|酷/u, "cool"],
+    [/scary|horror|吓人|恐怖/u, "scary"],
+    [/exciting|fast|刺激|紧张/u, "exciting"]
+  ]);
+
+  return {
+    characterOrSubject: characterTurn?.answer ?? inferredCharacter,
+    worldOrTheme: worldTurn?.answer ?? inferredWorld,
+    mood: moodTurn?.answer ?? inferredMood,
+    studentLanguage: characterTurn?.answer ?? worldTurn?.answer ?? moodTurn?.answer ?? null
+  };
+}
+
+function missingEngagementFields(contract, understanding) {
+  if (!needsEngagementAnchor(understanding)) return [];
+  const missing = [];
+  if (!contract.engagementAnchor?.characterOrSubject) missing.push("characterOrSubject");
+  return missing;
+}
+
+function engagementQuestion(field, understanding) {
+  if (field !== "characterOrSubject") return null;
+  const subject = projectSubject(understanding);
+  const text = `${understanding.originalIdea || ""} ${understanding.projectTitle || ""}`.toLowerCase();
+  const isGame = understanding.planningLens === "game-interaction";
+  const isJumpLike = /jump|跳/u.test(text);
+  const isStory = understanding.planningLens === "story-world";
+  const isSimulation = understanding.planningLens === "simulation";
+  const isPet = /pet|宠物/u.test(text);
+  let choices;
+  if (isPet) {
+    choices = [
+      goalChoice("anchor-cat-pet", "a cat with its own mood", "The project feels personal because the pet has a clear identity."),
+      goalChoice("anchor-dragon-pet", "a small dragon pet", "The pet can react in a more imaginative way."),
+      goalChoice("anchor-invented-pet", "a pet I invent myself", "The student can name and design the pet.")
+    ];
+  } else if (isGame && isJumpLike) {
+    choices = [
+      goalChoice("anchor-dinosaur-lava", "a dinosaur in a lava world", "The jumping loop gets a character and world immediately."),
+      goalChoice("anchor-robot-platforms", "a robot on broken platforms", "The player character and challenge feel more specific."),
+      goalChoice("anchor-invented-jumper", "a character I invent myself", "The student keeps ownership of the main character.")
+    ];
+  } else if (isGame) {
+    choices = [
+      goalChoice("anchor-dinosaur-game", "a dinosaur character", "The game has a clear main character."),
+      goalChoice("anchor-robot-game", "a robot character", "The game gets a specific player identity."),
+      goalChoice("anchor-invented-game", "a character I invent myself", "The student can decide the look and personality.")
+    ];
+  } else if (isStory) {
+    choices = [
+      goalChoice("anchor-explorer", "a brave explorer", "The story has someone the reader can follow."),
+      goalChoice("anchor-magic-animal", "a magical animal", "The story gets a memorable main subject."),
+      goalChoice("anchor-invented-story", "a character I invent myself", "The student owns the story character.")
+    ];
+  } else if (isSimulation) {
+    choices = [
+      goalChoice("anchor-living-creature", "a living creature in the system", "The simulation has something the learner can care about."),
+      goalChoice("anchor-small-world", "a small world with changing parts", "The system feels like a place, not just settings."),
+      goalChoice("anchor-invented-sim", "a system theme I invent myself", "The student chooses the simulation's identity.")
+    ];
+  } else {
+    choices = [
+      goalChoice("anchor-character", "a character I care about", "The project has a main subject the student wants to make."),
+      goalChoice("anchor-world", "a world or theme I like", "The project has a setting that makes it feel personal."),
+      goalChoice("anchor-invented", "something I invent myself", "The student keeps ownership of the idea.")
+    ];
+  }
+  return {
+    id: "goal-character-or-subject",
+    prompt: `Who or what should ${subject} be about?`,
+    choices,
+    allowFreeText: true,
+    allowNotSure: true,
+    targets: ["characterOrSubject"]
+  };
+}
+
+function concreteGoalQuestion(field, understanding) {
+  const anchorQuestion = engagementQuestion(field, understanding);
+  if (anchorQuestion) return anchorQuestion;
+  const subject = projectSubject(understanding);
+  const lower = `${understanding.originalIdea || ""} ${understanding.projectTitle || ""}`.toLowerCase();
+  const isGame = understanding.planningLens === "game-interaction";
+  const isCreative = understanding.planningLens === "creative-transform-tool";
+  const isLearning = understanding.planningLens === "learning-helper";
+  const isStory = understanding.planningLens === "story-world";
+  const isSimulation = understanding.planningLens === "simulation";
+  const isWebsite = understanding.planningLens === "content-website";
+  const isTask = /task|list|club|todo|to-do|任务|清单|社团/u.test(lower);
+  const isPet = /pet|宠物/u.test(lower);
+  const isJumpLike = /jump|跳/u.test(lower);
+
+  if (field === "primaryObject") {
+    if (isCreative) {
+      return {
+        prompt: `In ${subject}, what image or drawing should the project work on first?`,
+        choices: [
+          goalChoice("object-uploaded-drawing", "A drawing the user uploads", "The project starts from a drawing added from the user's device."),
+          goalChoice("object-in-app-drawing", "A drawing made inside the tool", "The user draws something in the project, then changes it."),
+          goalChoice("object-sample-image", "A sample image to restyle", "The project provides a starter image the user can try.")
+        ],
+        targets: ["primaryObject"]
+      };
+    }
+    if (isTask) {
+      return {
+        prompt: `In ${subject}, what should people be able to track or change?`,
+        choices: [
+          goalChoice("object-club-tasks", "Club tasks with done states", "Each task can be added, checked off, or still be unfinished."),
+          goalChoice("object-shared-task-list", "A shared list of jobs", "The project shows who needs to do what."),
+          goalChoice("object-progress-board", "A progress board", "The main thing is a board that changes as work gets finished.")
+        ],
+        targets: ["primaryObject"]
+      };
+    }
+    if (isGame) {
+      return {
+        prompt: `In ${subject}, what should the player mostly watch or control?`,
+        choices: [
+          goalChoice("object-player-challenge", isJumpLike ? "A player and the things they must clear" : "A player and a challenge", "The main thing is the player facing something that can stop or change the run."),
+          goalChoice("object-score-items", "Items that change the score", "The project focuses on things the player collects, avoids, or earns."),
+          goalChoice("object-level-path", "A path, level, or finish point", "The project focuses on moving through a space toward a clear result.")
+        ],
+        targets: ["primaryObject"]
+      };
+    }
+    if (isStory) {
+      return {
+        prompt: `In ${subject}, what story thing should change when someone chooses?`,
+        choices: [
+          goalChoice("object-story-scene", "The current story scene", "The project shows a scene, then changes it after a choice."),
+          goalChoice("object-story-path", "The reader's path", "The project tracks where the reader chose to go."),
+          goalChoice("object-story-character", "A character or place", "The project focuses on what happens to a character or place.")
+        ],
+        targets: ["primaryObject"]
+      };
+    }
+    if (isLearning) {
+      return {
+        prompt: `In ${subject}, what should the learner bring into the helper?`,
+        choices: [
+          goalChoice("object-learner-attempt", "The learner's own try", "The project responds to what the learner already attempted."),
+          goalChoice("object-question-step", "One question or step", "The helper focuses on one part of the work at a time."),
+          goalChoice("object-mistake-pattern", "A mistake or confusing part", "The project helps the learner notice what needs work.")
+        ],
+        targets: ["primaryObject"]
+      };
+    }
+  }
+
+  if (field === "coreMechanic") {
+    if (isCreative) {
+      return {
+        prompt: `In ${subject}, what should happen after the user adds a drawing?`,
+        choices: [
+          goalChoice("mechanic-pick-style-preview", "Choose a style and see the drawing change", "The user picks a style, and the project shows a styled preview."),
+          goalChoice("mechanic-before-after", "Compare the original and styled versions", "The project shows both versions so the change is clear."),
+          goalChoice("mechanic-try-styles", "Try different styles until one looks right", "The user can switch styles and watch the preview update.")
+        ],
+        targets: ["coreMechanic"]
+      };
+    }
+    if (isPet) {
+      return {
+        prompt: `In ${subject}, what should the player do to affect the pet?`,
+        choices: [
+          goalChoice("mechanic-feed-happiness", "Feed the pet and happiness changes", "The player's choice changes how happy the pet is."),
+          goalChoice("mechanic-care-reaction", "Choose a care action and see the pet react", "The pet responds differently based on what the player does."),
+          goalChoice("mechanic-keep-needs-balanced", "Keep the pet's needs balanced", "The player repeats care actions to keep the pet doing well.")
+        ],
+        targets: ["coreMechanic", "primaryObject"]
+      };
+    }
+    if (isGame) {
+      return {
+        prompt: `In ${subject}, what should the player actually do again and again?`,
+        choices: [
+          goalChoice("mechanic-avoid-obstacles", isJumpLike ? "Jump over obstacles without hitting them" : "Dodge obstacles without hitting them", "The player times an action to avoid losing or resetting."),
+          goalChoice("mechanic-collect-score", "Collect coins or items to raise the score", "The player gets items or points, and the score changes."),
+          goalChoice("mechanic-reach-finish", "Reach a finish platform or endpoint", "The player keeps going until they reach a clear end point.")
+        ],
+        targets: ["coreMechanic", "primaryObject"]
+      };
+    }
+    if (isTask) {
+      return {
+        prompt: `In ${subject}, what should someone do that changes the list?`,
+        choices: [
+          goalChoice("mechanic-add-task", "Add a task and see it appear", "A new task shows up in the list or board."),
+          goalChoice("mechanic-mark-done", "Mark a task done and update progress", "The task changes status, and progress becomes visible."),
+          goalChoice("mechanic-assign-filter", "Assign or filter tasks", "The list changes based on who owns a task or what status it has.")
+        ],
+        targets: ["coreMechanic", "primaryObject"]
+      };
+    }
+    if (isStory) {
+      return {
+        prompt: `In ${subject}, what should a reader choose, and what changes after that?`,
+        choices: [
+          goalChoice("mechanic-choose-scene", "Choose a path and see the next scene", "The reader picks where to go, and the story moves there."),
+          goalChoice("mechanic-choice-consequence", "Make a choice that changes what happens", "The project shows a consequence after the choice."),
+          goalChoice("mechanic-unlock-place", "Unlock a new place or moment", "The story opens a new part after the reader acts.")
+        ],
+        targets: ["coreMechanic", "primaryObject"]
+      };
+    }
+    if (isSimulation) {
+      return {
+        prompt: `In ${subject}, what should someone change and then observe?`,
+        choices: [
+          goalChoice("mechanic-change-need", "Change one condition and watch the system respond", "The user changes something like a need, amount, or setting, and the visible system updates."),
+          goalChoice("mechanic-balance-system", "Try to keep the system balanced", "The user repeats actions to keep the system in a healthy range."),
+          goalChoice("mechanic-cause-effect", "Test a cause and see the effect", "The project shows what changed because of the user's action.")
+        ],
+        targets: ["coreMechanic", "primaryObject"]
+      };
+    }
+    if (isLearning) {
+      return {
+        prompt: `In ${subject}, how should the helper respond to the learner's own work?`,
+        choices: [
+          goalChoice("mechanic-hint-after-try", "Give a hint after the learner shares a try", "The helper responds to the learner's attempt without giving the final answer."),
+          goalChoice("mechanic-check-step", "Check one step and explain what to fix", "The helper points to the part that needs attention."),
+          goalChoice("mechanic-ask-next-question", "Ask a next question that helps the learner think", "The helper guides the learner to revise their own work.")
+        ],
+        targets: ["coreMechanic", "primaryObject"]
+      };
+    }
+    if (isWebsite) {
+      return {
+        prompt: `In ${subject}, what should visitors click or explore?`,
+        choices: [
+          goalChoice("mechanic-open-section", "Open a section and see its content", "The visitor chooses a section, and the page shows the matching content."),
+          goalChoice("mechanic-filter-content", "Filter or choose content to view", "The visible content changes based on what the visitor picks."),
+          goalChoice("mechanic-submit-view", "Add something and see it appear", "The visitor enters something, and the page shows the result.")
+        ],
+        targets: ["coreMechanic", "primaryObject"]
+      };
+    }
+  }
+
+  if (field === "endState") {
+    if (isCreative) {
+      return {
+        prompt: `When is ${subject} finished enough to show someone?`,
+        choices: [
+          goalChoice("end-styled-preview", "A styled preview is shown", "The user can clearly see the changed drawing."),
+          goalChoice("end-save-styled-image", "The user can save the styled image", "The final image can be kept or shared."),
+          goalChoice("end-before-after-clear", "The before-and-after change is clear", "Someone can tell what changed from the original.")
+        ],
+        targets: ["endState"]
+      };
+    }
+    if (isGame) {
+      return {
+        prompt: `How will the player know they did well in ${subject}?`,
+        choices: [
+          goalChoice("end-score-rises", "The score goes up", "The player can see progress through points or score."),
+          goalChoice("end-survive-longer", "The player lasts longer without losing", "The result is measured by staying in the run."),
+          goalChoice("end-finish-reached", "A finish point or win state appears", "The project shows a clear end or success moment.")
+        ],
+        targets: ["endState"]
+      };
+    }
+    if (isTask) {
+      return {
+        prompt: `How will someone know ${subject} is working?`,
+        choices: [
+          goalChoice("end-tasks-done", "Finished tasks are clearly marked", "People can see what is done and what is still open."),
+          goalChoice("end-progress-visible", "Progress is visible", "The project shows how much work has been completed."),
+          goalChoice("end-list-ready-share", "The list is ready to share", "The final task board can be shown to the group.")
+        ],
+        targets: ["endState"]
+      };
+    }
+    if (isStory) {
+      return {
+        prompt: `How will the reader know they reached a result in ${subject}?`,
+        choices: [
+          goalChoice("end-story-ending", "An ending scene appears", "The reader reaches a clear story result."),
+          goalChoice("end-path-summary", "The chosen path is shown", "The project shows what route the reader created."),
+          goalChoice("end-new-scene-unlocked", "A new scene or place unlocks", "The reader sees progress through the story world.")
+        ],
+        targets: ["endState"]
+      };
+    }
+    if (isLearning) {
+      return {
+        prompt: `How will the learner know ${subject} helped them?`,
+        choices: [
+          goalChoice("end-learner-revises", "The learner improves their own answer", "The learner changes their work after using the helper."),
+          goalChoice("end-understands-step", "One confusing step becomes clear", "The learner can explain or try the next step."),
+          goalChoice("end-hint-not-answer", "The helper gives guidance, not the final answer", "The result supports learning without doing the work for them.")
+        ],
+        targets: ["endState"]
+      };
+    }
+  }
+
+  return null;
+}
+
 function goalContractQuestion(field, understanding) {
+  const concrete = concreteGoalQuestion(field, understanding);
+  if (concrete) {
+    return {
+      id: `goal-${field.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`,
+      prompt: concrete.prompt,
+      choices: concrete.choices,
+      allowFreeText: true,
+      allowNotSure: true,
+      targets: concrete.targets
+    };
+  }
   if (field === "primaryObject") {
     const choices = [
-      goalChoice("object-visible-thing", "A visible thing on screen", "The project works with one main thing someone can see."),
-      goalChoice("object-user-content", "Something the user makes or adds", "The user provides or creates the main thing the project changes."),
-      goalChoice("object-collection", "A group of items or choices", "The project helps someone work with multiple items, options, or steps.")
+      goalChoice("object-character-scene", "A character, scene, or object on screen", "People can see one clear thing that the project changes or uses."),
+      goalChoice("object-user-drawing", "A drawing, photo, or thing the user adds", "The user starts by adding or making something visible."),
+      goalChoice("object-list-cards", "Cards, tasks, items, or choices", "The project works with a set of things people can pick, sort, or finish.")
     ];
     return {
       id: "goal-primary-object",
-      prompt: "What is the main thing your project works with?",
+      prompt: "What should people see or work with first?",
       choices,
       allowFreeText: true,
       allowNotSure: true,
@@ -644,10 +1029,11 @@ function goalContractQuestion(field, understanding) {
     };
   }
   if (field === "coreMechanic") {
+    const subject = projectSubject(understanding);
     const choices = [
-      goalChoice("mechanic-action-change", "An action changes the main thing", "Someone acts, and the project shows a visible change."),
-      goalChoice("mechanic-choice-result", "A choice creates a result", "Someone chooses something, and the project shows what happened."),
-      goalChoice("mechanic-repeat-progress", "Repeating an action shows progress", "Someone can try again or keep going, and the project tracks what changes.")
+      goalChoice("mechanic-make-change", `Change ${subject} and show what happened`, "The user does one clear action, and the project shows the result."),
+      goalChoice("mechanic-choose-path", `Choose something in ${subject}`, "The user chooses an option, and the project shows the matching response."),
+      goalChoice("mechanic-try-again", `Try again in ${subject} and track progress`, "The user repeats an action, and the project shows what improved or changed.")
     ];
     return {
       id: "goal-core-mechanic",
@@ -658,10 +1044,11 @@ function goalContractQuestion(field, understanding) {
       targets: ["coreMechanic"]
     };
   }
+  const subject = projectSubject(understanding);
   const choices = [
-    goalChoice("end-clear-result", "A clear result appears", "The user sees the result they were trying to make."),
-    goalChoice("end-progress-complete", "Progress or completion is visible", "The project shows that someone moved forward or finished."),
-    goalChoice("end-save-share", "The result can be kept or shown", "The final result can be saved, shared, or shown to someone else.")
+    goalChoice("end-clear-result", `${subject} shows a clear result`, "The user sees the result they were trying to make."),
+    goalChoice("end-progress-complete", `${subject} shows progress or completion`, "The project shows that someone moved forward or finished."),
+    goalChoice("end-save-share", `${subject} can be saved or shown`, "The final result can be saved, shared, or shown to someone else.")
   ];
   return {
     id: "goal-end-state",
@@ -689,12 +1076,27 @@ function goalPredicate(value) {
   return text;
 }
 
-function mechanicClause(value) {
+function mechanicClause(value, subject = "the player") {
   const text = lowerFirst(value);
-  if (text.startsWith("jump ")) return `the player jumps ${text.slice("jump ".length)}`;
-  if (text.startsWith("land ")) return `the player lands ${text.slice("land ".length)}`;
-  if (text.startsWith("collect ")) return `the player collects ${text.slice("collect ".length)}`;
+  if (text.startsWith("jump ")) return `${subject} jumps ${text.slice("jump ".length)}`;
+  if (text.startsWith("land ")) return `${subject} lands ${text.slice("land ".length)}`;
+  if (text.startsWith("collect ")) return `${subject} collects ${text.slice("collect ".length)}`;
   return text;
+}
+
+function contractGoalSentence(idea, contract, fallbackText = "") {
+  const base = compactText(idea, 220).replace(/[.?!]+$/u, "");
+  const subject = contract.engagementAnchor?.characterOrSubject || "the player";
+  if (contract.coreMechanic && contract.endState) {
+    return compactText(`${base} where ${mechanicClause(contract.coreMechanic, subject)}, and the goal is ${goalPredicate(contract.endState)}.`, 260);
+  }
+  if (contract.coreMechanic) {
+    return compactText(`${base} where ${mechanicClause(contract.coreMechanic, subject)}.`, 260);
+  }
+  if (contract.engagementAnchor?.characterOrSubject) {
+    return compactText(`${base} about ${contract.engagementAnchor.characterOrSubject}.`, 260);
+  }
+  return compactText(fallbackText || idea, 260);
 }
 
 function primaryObjectFromMechanic(value) {
@@ -731,9 +1133,15 @@ function inferGoalContract(idea, understanding, turns = []) {
   }
   if (endTurn) endState = endTurn.answer;
 
+  const engagementAnchor = inferEngagementAnchor(idea, understanding, turns);
+  const mechanicSubject = engagementAnchor.characterOrSubject || "the player";
   const learnerGoal = compactText(
     turns.length && coreMechanic && endState
-      ? `${idea.replace(/[.?!]+$/u, "")} where ${mechanicClause(coreMechanic)}, and the goal is ${goalPredicate(endState)}.`
+      ? `${idea.replace(/[.?!]+$/u, "")} where ${mechanicClause(coreMechanic, mechanicSubject)}, and the goal is ${goalPredicate(endState)}.`
+      : turns.length && coreMechanic
+        ? `${idea.replace(/[.?!]+$/u, "")} where ${mechanicClause(coreMechanic, mechanicSubject)}.`
+        : turns.length && engagementAnchor.characterOrSubject
+          ? `${idea.replace(/[.?!]+$/u, "")} about ${engagementAnchor.characterOrSubject}.`
       : combined,
     260
   );
@@ -743,7 +1151,8 @@ function inferGoalContract(idea, understanding, turns = []) {
     primaryObject: inferredPrimaryObject ?? primaryTurn?.answer ?? (vague && understanding.planningLens === "generic-custom-system" ? null : understanding.primaryObject),
     actor: actorTurn?.answer ?? (vague && understanding.planningLens === "generic-custom-system" ? null : understanding.userActor),
     coreMechanic,
-    endState
+    endState,
+    engagementAnchor
   };
 }
 
@@ -753,9 +1162,15 @@ function inferGoalReadiness(contract, understanding) {
   if (isThinGoalValue("primaryObject", contract.primaryObject, understanding)) missingFields.push("primaryObject");
   if (isThinGoalValue("coreMechanic", contract.coreMechanic, understanding)) missingFields.push("coreMechanic");
   if (isThinGoalValue("endState", contract.endState, understanding)) missingFields.push("endState");
-  const readyForConfirmation = missingFields.length === 0;
-  const confidence = readyForConfirmation ? "high" : missingFields.length <= 2 ? "medium" : "low";
-  const nextTarget = missingFields.includes("coreMechanic")
+  const missingEngagement = missingEngagementFields(contract, understanding);
+  const readyForPlanning = missingFields.length === 0;
+  const readyForConfirmation = readyForPlanning && missingEngagement.length === 0;
+  const confidence = readyForConfirmation ? "high" : missingFields.length + missingEngagement.length <= 2 ? "medium" : "low";
+  const nextTarget = missingEngagement.includes("characterOrSubject")
+    ? "characterOrSubject"
+    : understanding.planningLens === "generic-custom-system" && missingFields.includes("primaryObject")
+    ? "primaryObject"
+    : missingFields.includes("coreMechanic")
     ? "coreMechanic"
     : missingFields.includes("endState")
       ? "endState"
@@ -764,11 +1179,15 @@ function inferGoalReadiness(contract, understanding) {
         : missingFields[0];
   return {
     readyForConfirmation,
+    readyForPlanning,
     missingFields,
+    missingEngagementFields: missingEngagement,
     confidence,
     rationale: readyForConfirmation
-      ? "The goal has a concrete project object, a specific mechanic, and a clear success state."
-      : "The goal still needs a more specific object, mechanic, or success state before planning.",
+      ? "We know what appears, what changes, what counts as done, and what makes it feel like the learner's project."
+      : missingEngagement.length
+        ? "Before planning, we still need who or what makes this project feel like the learner's own."
+        : "Before planning, we still need what appears, what changes, or what done looks like.",
     nextQuestion: nextTarget ? goalContractQuestion(nextTarget, understanding) : null
   };
 }
@@ -780,6 +1199,7 @@ function buildGoalClarification(idea, turns = []) {
   const goalReadiness = inferGoalReadiness(goalContract, understanding);
   return {
     ...understanding,
+    originalIdea: compactText(idea, 220),
     confidence: goalReadiness.confidence,
     goalContract,
     goalReadiness,
@@ -870,11 +1290,20 @@ function normalizeGoalUnderstanding(value, idea, turns = []) {
     primaryObject: primaryObjectFromMechanic(value?.goalContract?.coreMechanic) ?? primaryObjectFromMechanic(fallback.goalContract.coreMechanic) ?? value?.goalContract?.primaryObject ?? fallback.goalContract.primaryObject,
     actor: value?.goalContract?.actor ?? fallback.goalContract.actor,
     coreMechanic: value?.goalContract?.coreMechanic ?? fallback.goalContract.coreMechanic,
-    endState: value?.goalContract?.endState ?? fallback.goalContract.endState
+    endState: value?.goalContract?.endState ?? fallback.goalContract.endState,
+    engagementAnchor: {
+      characterOrSubject: value?.goalContract?.engagementAnchor?.characterOrSubject ?? fallback.goalContract.engagementAnchor?.characterOrSubject ?? null,
+      worldOrTheme: value?.goalContract?.engagementAnchor?.worldOrTheme ?? fallback.goalContract.engagementAnchor?.worldOrTheme ?? null,
+      mood: value?.goalContract?.engagementAnchor?.mood ?? fallback.goalContract.engagementAnchor?.mood ?? null,
+      studentLanguage: value?.goalContract?.engagementAnchor?.studentLanguage ?? fallback.goalContract.engagementAnchor?.studentLanguage ?? null
+    }
   };
+  rawGoalContract.learnerGoal = contractGoalSentence(idea, rawGoalContract, rawGoalContract.learnerGoal);
   const fallbackReadiness = inferGoalReadiness(rawGoalContract, normalized);
   const llmMissingFields = (Array.isArray(value?.goalReadiness?.missingFields) ? value.goalReadiness.missingFields : [])
     .filter((field) => goalContractFieldValues.includes(field));
+  const llmMissingEngagementFields = (Array.isArray(value?.goalReadiness?.missingEngagementFields) ? value.goalReadiness.missingEngagementFields : [])
+    .filter((field) => engagementAnchorFieldValues.includes(field));
   const missingFields = Array.from(new Set([...fallbackReadiness.missingFields, ...llmMissingFields]))
     .filter((field) => {
       if (field === "learnerGoal") return !rawGoalContract.learnerGoal;
@@ -884,9 +1313,14 @@ function normalizeGoalUnderstanding(value, idea, turns = []) {
       return false;
     })
     .slice(0, 5);
-  const readyForConfirmation = missingFields.length === 0;
-  const readinessCore = { ...fallbackReadiness, missingFields, readyForConfirmation };
+  const missingEngagement = Array.from(new Set([...fallbackReadiness.missingEngagementFields, ...llmMissingEngagementFields]))
+    .filter((field) => field === "characterOrSubject" && !rawGoalContract.engagementAnchor?.characterOrSubject)
+    .slice(0, 3);
+  const readyForPlanning = missingFields.length === 0;
+  const readyForConfirmation = readyForPlanning && missingEngagement.length === 0;
+  const readinessCore = { ...fallbackReadiness, missingFields, missingEngagementFields: missingEngagement, readyForPlanning, readyForConfirmation };
   const goalContract = sanitizeGoalContract(rawGoalContract, readinessCore, normalized);
+  goalContract.learnerGoal = contractGoalSentence(idea, goalContract, rawGoalContract.learnerGoal);
   const nextQuestion = normalizeGoalClarificationQuestion(
     readyForConfirmation ? null : fallbackReadiness.nextQuestion ?? value?.goalReadiness?.nextQuestion,
     normalized
@@ -896,7 +1330,9 @@ function normalizeGoalUnderstanding(value, idea, turns = []) {
     goalContract,
     goalReadiness: {
       readyForConfirmation,
+      readyForPlanning,
       missingFields,
+      missingEngagementFields: missingEngagement,
       confidence: readyForConfirmation ? "high" : fallbackReadiness.confidence,
       rationale: compactText(readyForConfirmation ? (value?.goalReadiness?.rationale || fallbackReadiness.rationale) : fallbackReadiness.rationale, 180),
       nextQuestion
@@ -1292,9 +1728,13 @@ export async function startPlanning(body) {
         "Do not ask a co-planning question yet.",
         "First confirm the learner goal contract.",
         "A ready goal must include a specific primaryObject, a specific coreMechanic, and a concrete endState.",
+        "For expressive projects such as games, stories, pets, worlds, or simulations, capture an engagement anchor: who or what the learner cares about, plus optional world/theme or mood.",
+        "The engagement anchor supports ownership and motivation; do not confuse it with the functional mechanic.",
         "actor is context only; do not block readiness only because actor is generic.",
         "Do not mark placeholder phrases as ready when they only say the project, user, or system does something without a concrete action and visible consequence.",
         "For any idea type, clarify the concrete loop: the learner-facing object, the action that affects it, the visible change, and the completion signal.",
+        "The clarification question is primary; choices are only concrete scaffolds grounded in the learner's idea.",
+        "Do not offer abstract choices such as an action changes something or a result appears.",
         "If not ready, ask exactly one direct or indirect goal clarification question."
       ]
     },
@@ -1345,7 +1785,7 @@ export async function confirmGoalUnderstanding(body) {
       prompt: compactText(question.prompt, 140),
       answer,
       source: body.source === "free-input" || body.source === "not-sure" ? body.source : "choice",
-      targets: (Array.isArray(question.targets) ? question.targets : ["coreMechanic"]).filter((field) => goalContractFieldValues.includes(field)).slice(0, 2),
+      targets: (Array.isArray(question.targets) ? question.targets : ["coreMechanic"]).filter((field) => goalQuestionTargetValues.includes(field)).slice(0, 2),
       createdAt: now()
     });
   }
@@ -1371,9 +1811,13 @@ export async function confirmGoalUnderstanding(body) {
           "Do not generate candidate system parts.",
           "Do not write code.",
           "A ready goal must include a specific primaryObject, a specific coreMechanic, and a concrete endState.",
+          "For expressive projects such as games, stories, pets, worlds, or simulations, capture an engagement anchor: who or what the learner cares about, plus optional world/theme or mood.",
+          "The engagement anchor supports ownership and motivation; do not confuse it with the functional mechanic.",
           "actor is context only; do not block readiness only because actor is generic.",
           "Do not mark placeholder phrases as ready when they only say the project, user, or system does something without a concrete action and visible consequence.",
           "For any idea type, clarify the concrete loop: the learner-facing object, the action that affects it, the visible change, and the completion signal.",
+          "The clarification question is primary; choices are only concrete scaffolds grounded in the learner's idea.",
+          "Do not offer abstract choices such as an action changes something or a result appears.",
           "If not ready, ask exactly one next goal clarification question."
         ]
       },
